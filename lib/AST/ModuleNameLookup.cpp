@@ -47,8 +47,7 @@ class ModuleNameLookup {
 
 public:
   ModuleNameLookup(ASTContext &ctx, ResolutionKind resolutionKind)
-      : ctx(ctx),
-        resolutionKind(resolutionKind),
+      : ctx(ctx), resolutionKind(resolutionKind),
         respectAccessControl(!ctx.isAccessControlDisabled()) {}
 
   /// Performs the qualified lookup requested by \p LookupStrategy into the
@@ -75,8 +74,7 @@ public:
                       const DeclContext *moduleOrFile,
                       ImportPath::Access accessPath,
                       const DeclContext *moduleScopeContext,
-                      bool hasModuleSelector,
-                      NLOptions options);
+                      bool hasModuleSelector, NLOptions options);
 };
 
 // Exclude names introduced by macro expansions.
@@ -98,17 +96,14 @@ public:
   /// \param name The name that will be looked up.
   /// \param lookupKind Whether this lookup is qualified or unqualified.
   /// \param resolutionKind What sort of decl is expected.
-  LookupByName(ASTContext &ctx, ResolutionKind resolutionKind,
-               DeclName name, NLKind lookupKind)
-    : Super(ctx, resolutionKind), name(name),
-      lookupKind(lookupKind) {}
+  LookupByName(ASTContext &ctx, ResolutionKind resolutionKind, DeclName name,
+               NLKind lookupKind)
+      : Super(ctx, resolutionKind), name(name), lookupKind(lookupKind) {}
 
 private:
   /// Returns whether it's okay to stop recursively searching imports, given
   /// that we found something non-overloadable.
-  static bool canReturnEarly() {
-    return true;
-  }
+  static bool canReturnEarly() { return true; }
 
   /// \param module The module to search for declarations in.
   /// \param path The access path that was imported; if not empty, only the
@@ -136,15 +131,12 @@ class LookupVisibleDecls : public ModuleNameLookup<LookupVisibleDecls> {
 public:
   LookupVisibleDecls(ASTContext &ctx, ResolutionKind resolutionKind,
                      NLKind lookupKind)
-    : ModuleNameLookup(ctx, resolutionKind),
-      lookupKind(lookupKind) {}
+      : ModuleNameLookup(ctx, resolutionKind), lookupKind(lookupKind) {}
 
 private:
   /// Returns whether it's okay to stop recursively searching imports, given
   /// that we found something non-overloadable.
-  static bool canReturnEarly() {
-    return false;
-  }
+  static bool canReturnEarly() { return false; }
 
   void doLocalLookup(ModuleDecl *module, ImportPath::Access path,
                      OptionSet<ModuleLookupFlags> flags,
@@ -156,30 +148,26 @@ private:
 
 } // end anonymous namespace
 
-bool swift::declIsVisibleToNameLookup(
-    const ValueDecl *decl, const DeclContext *moduleScopeContext,
-    NLOptions options) {
-  // NL_IgnoreAccessControl only applies to the current module. If
+bool swift::declIsVisibleToNameLookup(const ValueDecl *decl,
+                                      const DeclContext *moduleScopeContext,
+                                      NLOptions options) {
+  // NLOptions::IgnoreAccessControl only applies to the current module. If
   // it applies here, the declaration is visible.
-  if ((options & NL_IgnoreAccessControl) &&
-      moduleScopeContext &&
+  if ((options & NLOptions::IgnoreAccessControl) && moduleScopeContext &&
       moduleScopeContext->getParentModule() ==
           decl->getDeclContext()->getParentModule())
     return true;
 
-  bool includeUsableFromInline = options & NL_IncludeUsableFromInline;
+  bool includeUsableFromInline = options & NLOptions::IncludeUsableFromInline;
   return decl->isAccessibleFrom(moduleScopeContext, false,
                                 includeUsableFromInline);
 }
 
 template <typename LookupStrategy>
 void ModuleNameLookup<LookupStrategy>::lookupInModule(
-    SmallVectorImpl<ValueDecl *> &decls,
-    const DeclContext *moduleOrFile,
-    ImportPath::Access accessPath,
-    const DeclContext *moduleScopeContext,
-    bool hasModuleSelector,
-    NLOptions options) {
+    SmallVectorImpl<ValueDecl *> &decls, const DeclContext *moduleOrFile,
+    ImportPath::Access accessPath, const DeclContext *moduleScopeContext,
+    bool hasModuleSelector, NLOptions options) {
   assert(moduleOrFile->isModuleScopeContext());
 
   // Does the module scope have any separately-imported overlays shadowing
@@ -211,48 +199,47 @@ void ModuleNameLookup<LookupStrategy>::lookupInModule(
       return;
 
     auto newEnd = std::remove_if(
-      decls.begin() + currentCount, decls.end(),
-      [&](ValueDecl *VD) {
-        if (resolutionKind == ResolutionKind::TypesOnly && !isa<TypeDecl>(VD))
-          return true;
-        if (resolutionKind == ResolutionKind::MacrosOnly && !isa<MacroDecl>(VD))
-          return true;
-        if (respectAccessControl &&
-            !declIsVisibleToNameLookup(VD, moduleScopeContext, options))
-          return true;
-        if (!ABIRoleInfo(VD).matchesOptions(options))
-          return true;
-        return false;
-      });
+        decls.begin() + currentCount, decls.end(), [&](ValueDecl *VD) {
+          if (resolutionKind == ResolutionKind::TypesOnly && !isa<TypeDecl>(VD))
+            return true;
+          if (resolutionKind == ResolutionKind::MacrosOnly &&
+              !isa<MacroDecl>(VD))
+            return true;
+          if (respectAccessControl &&
+              !declIsVisibleToNameLookup(VD, moduleScopeContext, options))
+            return true;
+          if (!ABIRoleInfo(VD).matchesOptions(options))
+            return true;
+          return false;
+        });
     decls.erase(newEnd, decls.end());
 
     currentCount = decls.size();
   };
 
   OptionSet<ModuleLookupFlags> currentModuleLookupFlags = {};
-  if (options & NL_ExcludeMacroExpansions)
+  if (options & NLOptions::ExcludeMacroExpansions)
     currentModuleLookupFlags |= ModuleLookupFlags::ExcludeMacroExpansions;
-  if (options & NL_ABIProviding)
+  if (options & NLOptions::ABIProviding)
     currentModuleLookupFlags |= ModuleLookupFlags::ABIProviding;
   if (hasModuleSelector)
     currentModuleLookupFlags |= ModuleLookupFlags::HasModuleSelector;
 
   // Do the lookup into the current module.
   auto *module = moduleOrFile->getParentModule();
-  getDerived()->doLocalLookup(
-      module, accessPath, currentModuleLookupFlags, decls);
+  getDerived()->doLocalLookup(module, accessPath, currentModuleLookupFlags,
+                              decls);
   updateNewDecls(moduleScopeContext);
 
-  bool canReturnEarly = (initialCount != decls.size() &&
-                         getDerived()->canReturnEarly());
-  if (canReturnEarly &&
-      resolutionKind == ResolutionKind::Overloadable) {
+  bool canReturnEarly =
+      (initialCount != decls.size() && getDerived()->canReturnEarly());
+  if (canReturnEarly && resolutionKind == ResolutionKind::Overloadable) {
     // If we only found top-level functions or macros, keep looking, since
     // we may find additional overloads.
     if (std::all_of(decls.begin() + initialCount, decls.end(),
                     [](ValueDecl *VD) {
-      return isa<FuncDecl>(VD) || isa<MacroDecl>(VD);
-    }))
+                      return isa<FuncDecl>(VD) || isa<MacroDecl>(VD);
+                    }))
       canReturnEarly = false;
   }
 
@@ -261,7 +248,7 @@ void ModuleNameLookup<LookupStrategy>::lookupInModule(
     auto &imports = ctx.getImportCache().getImportSet(moduleOrFile);
 
     OptionSet<ModuleLookupFlags> importedModuleLookupFlags = {};
-    if (options & NL_ABIProviding)
+    if (options & NLOptions::ABIProviding)
       currentModuleLookupFlags |= ModuleLookupFlags::ABIProviding;
     // Do not propagate HasModuleSelector here; the selector wasn't specific.
 
@@ -269,8 +256,7 @@ void ModuleNameLookup<LookupStrategy>::lookupInModule(
                            const DeclContext *moduleScopeContext) {
       if (import.accessPath.empty())
         import.accessPath = accessPath;
-      else if (!accessPath.empty() &&
-               !import.accessPath.isSameAs(accessPath))
+      else if (!accessPath.empty() && !import.accessPath.isSameAs(accessPath))
         return;
 
       getDerived()->doLocalLookup(import.importedModule, import.accessPath,
@@ -363,23 +349,21 @@ void ModuleNameLookup<LookupStrategy>::lookupInModule(
               decls.end());
 }
 
-QualifiedLookupResult
-LookupInModuleRequest::evaluate(
+QualifiedLookupResult LookupInModuleRequest::evaluate(
     Evaluator &evaluator, const DeclContext *moduleOrFile, DeclName name,
     bool hasModuleSelector, NLKind lookupKind, ResolutionKind resolutionKind,
     const DeclContext *moduleScopeContext, NLOptions options) const {
   assert(moduleScopeContext->isModuleScopeContext());
 
   QualifiedLookupResult decls;
-  LookupByName lookup(moduleOrFile->getASTContext(), resolutionKind,
-                      name, lookupKind);
+  LookupByName lookup(moduleOrFile->getASTContext(), resolutionKind, name,
+                      lookupKind);
   lookup.lookupInModule(decls, moduleOrFile, {}, moduleScopeContext,
                         hasModuleSelector, options);
   return decls;
 }
 
-void namelookup::lookupInModule(const DeclContext *moduleOrFile,
-                                DeclName name,
+void namelookup::lookupInModule(const DeclContext *moduleOrFile, DeclName name,
                                 bool hasModuleSelector,
                                 SmallVectorImpl<ValueDecl *> &decls,
                                 NLKind lookupKind,
@@ -394,18 +378,15 @@ void namelookup::lookupInModule(const DeclContext *moduleOrFile,
 }
 
 void namelookup::lookupVisibleDeclsInModule(
-    const DeclContext *moduleOrFile,
-    ImportPath::Access accessPath,
-    SmallVectorImpl<ValueDecl *> &decls,
-    NLKind lookupKind,
-    ResolutionKind resolutionKind,
-    const DeclContext *moduleScopeContext) {
+    const DeclContext *moduleOrFile, ImportPath::Access accessPath,
+    SmallVectorImpl<ValueDecl *> &decls, NLKind lookupKind,
+    ResolutionKind resolutionKind, const DeclContext *moduleScopeContext) {
   assert(moduleScopeContext->isModuleScopeContext());
   auto &ctx = moduleOrFile->getASTContext();
   LookupVisibleDecls lookup(ctx, resolutionKind, lookupKind);
   lookup.lookupInModule(decls, moduleOrFile, accessPath, moduleScopeContext,
                         /*hasModuleSelector=*/false,
-                        NL_QualifiedDefault);
+                        NLOptions::QualifiedDefault);
 }
 
 void namelookup::simple_display(llvm::raw_ostream &out, ResolutionKind kind) {

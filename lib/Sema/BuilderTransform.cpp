@@ -539,8 +539,8 @@ protected:
         auto *elseBraceStmt = cast<BraceStmt>(elseStmt);
         SmallVector<ASTNode> elseBody;
 
-        std::tie(elseVarRef, unsupported) = transform(
-            elseBraceStmt, elseBody, /*isolateBuildBlock=*/true);
+        std::tie(elseVarRef, unsupported) =
+            transform(elseBraceStmt, elseBody, /*isolateBuildBlock=*/true);
         if (unsupported) {
           recordUnsupported(*unsupported);
           return nullptr;
@@ -918,9 +918,9 @@ TypeChecker::applyResultBuilderBodyTransform(FuncDecl *func, Type builderType) {
   if (!returnStmts.empty()) {
     // One or more explicit 'return' statements were encountered, which
     // disables the result builder transform. Warn when we do this.
-    ctx.Diags.diagnose(
-        returnStmts.front()->getReturnLoc(),
-        diag::result_builder_disabled_by_return_warn, builderType);
+    ctx.Diags.diagnose(returnStmts.front()->getReturnLoc(),
+                       diag::result_builder_disabled_by_return_warn,
+                       builderType);
 
     // Note that one can remove the result builder attribute.
     auto attr = func->getAttachedResultBuilder();
@@ -936,9 +936,8 @@ TypeChecker::applyResultBuilderBodyTransform(FuncDecl *func, Type builderType) {
 
     // Note that one can remove all of the return statements.
     {
-      auto diag = ctx.Diags.diagnose(
-          returnStmts.front()->getReturnLoc(),
-          diag::result_builder_remove_returns);
+      auto diag = ctx.Diags.diagnose(returnStmts.front()->getReturnLoc(),
+                                     diag::result_builder_remove_returns);
       for (auto returnStmt : returnStmts) {
         diag.fixItRemove(returnStmt->getReturnLoc());
       }
@@ -1166,13 +1165,11 @@ ConstraintSystem::matchResultBuilder(AnyFunctionRef fn, Type builderType,
 
       // If we're solving for code completion and the body contains the code
       // completion location, fall back to solving as a regular function body.
-      if (isForCodeCompletion() &&
-          containsIDEInspectionTarget(fn.getBody())) {
+      if (isForCodeCompletion() && containsIDEInspectionTarget(fn.getBody())) {
         return std::nullopt;
       }
 
-      if (auto *closure =
-              getAsExpr<ClosureExpr>(fn.getAbstractClosureExpr())) {
+      if (auto *closure = getAsExpr<ClosureExpr>(fn.getAbstractClosureExpr())) {
         recordTypeVariablesAsHoles(getClosureType(closure));
       }
 
@@ -1212,10 +1209,11 @@ ConstraintSystem::matchResultBuilder(AnyFunctionRef fn, Type builderType,
   return getTypeMatchSuccess();
 }
 
-void ConstraintSystem::recordResultBuilderTransform(AnyFunctionRef fn,
-                                          AppliedBuilderTransform transformInfo) {
-  bool inserted = resultBuilderTransformed.insert(
-      std::make_pair(fn, std::move(transformInfo))).second;
+void ConstraintSystem::recordResultBuilderTransform(
+    AnyFunctionRef fn, AppliedBuilderTransform transformInfo) {
+  bool inserted = resultBuilderTransformed
+                      .insert(std::make_pair(fn, std::move(transformInfo)))
+                      .second;
   ASSERT(inserted);
 
   if (solverState)
@@ -1315,11 +1313,11 @@ ResultBuilderOpSupport TypeChecker::checkBuilderOpSupport(
   bool foundUnavailable = false;
 
   SmallVector<ValueDecl *, 4> foundDecls;
-  dc->lookupQualified(
-      builderType, DeclNameRef(fnName),
-      builderType->getAnyNominal()->getLoc(),
-      NL_QualifiedDefault | NL_ProtocolMembers | NL_IgnoreMissingImports,
-      foundDecls);
+  dc->lookupQualified(builderType, DeclNameRef(fnName),
+                      builderType->getAnyNominal()->getLoc(),
+                      NLOptions::QualifiedDefault | NLOptions::ProtocolMembers |
+                          NLOptions::IgnoreMissingImports,
+                      foundDecls);
   for (auto decl : foundDecls) {
     if (auto func = dyn_cast<FuncDecl>(decl)) {
       // Function must be static.
@@ -1409,8 +1407,8 @@ swift::determineResultBuilderBuildFixItInfo(NominalTypeDecl *builder) {
     return std::make_tuple(buildInsertionLoc, stubIndent, componentType);
 
   ASTContext &ctx = builder->getASTContext();
-  buildInsertionLoc = Lexer::getLocForEndOfToken(
-      ctx.SourceMgr, buildInsertionLoc);
+  buildInsertionLoc =
+      Lexer::getLocForEndOfToken(ctx.SourceMgr, buildInsertionLoc);
 
   StringRef extraIndent;
   StringRef currentIndent = Lexer::getIndentationForLine(

@@ -13,8 +13,76 @@
 import ASTBridging
 import BasicBridging
 import SwiftIfConfig
-@_spi(Experimental) import SwiftLexicalLookup
+@_spi(Experimental) @_spi(_QualifiedLookup) import SwiftLexicalLookup
 import SwiftSyntax
+
+// bool lookupQualified(Type type, DeclNameRef member,
+//                      SourceLoc loc, NLOptions options,
+//                      SmallVectorImpl<ValueDecl *> &decls) const;
+// ------------------------------------
+// func lookupMember(
+//     named memberName: DeclReferenceExprSyntax,
+//     inType type: TypeSyntax,
+//     atLocation location: AbsolutePosition,
+//     options: LookupOptions
+// ) -> [any NamedDeclSyntax]
+//
+
+extension DeclNameRef {
+  static func toStr(bridged: DeclBaseName) -> String {
+    switch (bridged.getKind()) {
+    case .Normal: return "normal"
+    case .Constructor: return "constructor"
+    case .Destructor: return "destructor"
+    case .Subscript: return "subscript"
+    }
+  }
+  // func generateDeclBaseName(_ token: TokenSyntax) -> (baseName: DeclBaseName, sourceLoc: SourceLoc) {
+  //   let baseName: DeclBaseName
+  //   switch token.keywordKind {
+  //   case .`init`:
+  //     baseName = .createConstructor()
+  //   case .deinit:
+  //     baseName = .createDestructor()
+  //   case .subscript:
+  //     baseName = .createSubscript()
+  //   default:
+  //     baseName = .init(self.generateIdentifier(token))
+  //   }
+  //   let baseNameLoc = self.generateSourceLoc(token)
+  //   return (baseName, baseNameLoc)
+  // }
+}
+
+extension BridgedValueDecl {}
+
+public func qualifiedLookup(
+  sourceFilePtr: UnsafeMutableRawPointer,
+  astContext: BridgedASTContext,
+  type: BridgedTypeRepr,
+  memberName: BridgedDeclNameRef,
+  loc: SourceLoc,
+  options: NLOptions,
+  valueDeclsResultRef: BridgedArrayRef
+) -> Bool {
+  // Obtain source file and lookup position
+  let sourceFile = sourceFilePtr.assumingMemoryBound(to: ExportedSourceFile.self)
+  guard let sourceFileSyntax = sourceFile.pointee.syntax.as(SourceFileSyntax.self) else {
+    print("Could not cast exported source file to SourceFileSyntax")
+    return false
+  }
+  let sourceLocationConverter = sourceFile.pointee.sourceLocationConverter
+  let configuredRegions = sourceFile.pointee.configuredRegions(astContext: astContext)
+
+  guard let lookupPosition = sourceFile.pointee.position(of: loc),
+    let lookupToken = sourceFileSyntax.token(at: lookupPosition)
+  else {
+    print("Could not determine lookup position")
+    return false
+  }
+
+  return false
+}
 
 private let rowCharWidth: Int = 30
 
@@ -230,13 +298,14 @@ private func sllConsumedResults(
     results.append(previousMacroResult)
   }
 
-  return results.flatMap { result in
+  return results.flatMap { (result: LookupResult) in
     switch result {
-    case .lookForMembers(let syntax):
+    case .lookForMembers(let declGroup):
       return [
         ConsumedLookupResult(
           rawName: "",
-          position: (syntax.asProtocol(SyntaxProtocol.self) as! LookInMembersScopeSyntax).lookupMembersPosition,
+          position: DeclGroupSyntaxType(exactly: declGroup)._asLookInMembersScope!.lookupMembersPosition,
+          // position: (Syntax(declGroup).asProtocol(SyntaxProtocol.self) as! LookInMembersScopeSyntax).lookupMembersPosition,
           flags: .shouldLookInMembers
         )
       ]

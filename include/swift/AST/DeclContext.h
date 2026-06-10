@@ -39,54 +39,54 @@
 #include <type_traits>
 
 namespace llvm {
-  class raw_ostream;
+class raw_ostream;
 }
 
 namespace swift {
-  class AbstractFunctionDecl;
-  class GenericEnvironment;
-  class ASTContext;
-  class ASTWalker;
-  class CanType;
-  class Decl;
-  class DeclContext;
-  class EnumDecl;
-  class ExtensionDecl;
-  class Expr;
-  class GenericParamList;
-  class LazyMemberLoader;
-  class GenericContext;
-  class GenericSignature;
-  class GenericTypeParamDecl;
-  class GenericTypeParamType;
-  class InfixOperatorDecl;
-  class InfixOperatorLookupResult;
-  enum class PlatformKind: uint8_t;
-  class PrecedenceGroupDecl;
-  class ProtocolDecl;
-  class Requirement;
-  class SourceFile;
-  class Type;
-  class ModuleDecl;
-  class PackageUnit;
-  class GenericTypeDecl;
-  class NominalTypeDecl;
-  class PrecedenceGroupLookupResult;
-  class PostfixOperatorDecl;
-  class PrefixOperatorDecl;
-  class ProtocolConformance;
-  class ValueDecl;
-  class VarDecl;
-  class Initializer;
-  class ClassDecl;
-  class SerializedAbstractClosureExpr;
-  class SerializedTopLevelCodeDecl;
-  class StructDecl;
-  class AccessorDecl;
-  class ClosureExpr;
+class AbstractFunctionDecl;
+class GenericEnvironment;
+class ASTContext;
+class ASTWalker;
+class CanType;
+class Decl;
+class DeclContext;
+class EnumDecl;
+class ExtensionDecl;
+class Expr;
+class GenericParamList;
+class LazyMemberLoader;
+class GenericContext;
+class GenericSignature;
+class GenericTypeParamDecl;
+class GenericTypeParamType;
+class InfixOperatorDecl;
+class InfixOperatorLookupResult;
+enum class PlatformKind : uint8_t;
+class PrecedenceGroupDecl;
+class ProtocolDecl;
+class Requirement;
+class SourceFile;
+class Type;
+class ModuleDecl;
+class PackageUnit;
+class GenericTypeDecl;
+class NominalTypeDecl;
+class PrecedenceGroupLookupResult;
+class PostfixOperatorDecl;
+class PrefixOperatorDecl;
+class ProtocolConformance;
+class ValueDecl;
+class VarDecl;
+class Initializer;
+class ClassDecl;
+class SerializedAbstractClosureExpr;
+class SerializedTopLevelCodeDecl;
+class StructDecl;
+class AccessorDecl;
+class ClosureExpr;
 
-  template <typename T>
-  struct AvailableDuringLoweringDeclFilter;
+template <typename T>
+struct AvailableDuringLoweringDeclFilter;
 
 namespace serialization {
 using DeclID = llvm::PointerEmbeddedInt<unsigned, 31>;
@@ -242,7 +242,8 @@ struct FragileFunctionKind {
 /// The hierarchy between DeclContext subclasses is set in their ctors. For
 /// example, FileUnit ctor takes ModuleDecl as its parent DeclContext. The
 /// hierarchy from the most to least restrictive order is:
-/// decl/expr (e.g. ClassDecl) -> FileUnit -> ModuleDecl -> PackageUnit -> nullptr
+/// decl/expr (e.g. ClassDecl) -> FileUnit -> ModuleDecl -> PackageUnit ->
+/// nullptr
 ///
 /// There's an exception, however; the parent of ModuleDecl is set nullptr, not
 /// set to PackageUnit; ModuleDecl has a pointer to PackageUnit as its field,
@@ -260,22 +261,22 @@ class alignas(1 << DeclContextAlignInBits) DeclContext
     // If you add a new AST hierarchies, then update the static_assert() below.
   };
   static_assert(unsigned(ASTHierarchy::SerializedTopLevelCodeDecl) <
-                (1 << DeclContextAlignInBits),
+                    (1 << DeclContextAlignInBits),
                 "ASTHierarchy exceeds bits available");
 
-  llvm::PointerIntPair<DeclContext*, 3, ASTHierarchy> ParentAndKind;
+  llvm::PointerIntPair<DeclContext *, 3, ASTHierarchy> ParentAndKind;
 
   /// Change the parent of this context.  This should only be used
   /// very carefully.
   void setParent(DeclContext *parent) { ParentAndKind.setPointer(parent); }
-  friend class Initializer; // uses setParent
-  friend class AutoClosureExpr; // uses setParent
+  friend class Initializer;         // uses setParent
+  friend class AutoClosureExpr;     // uses setParent
   friend class AbstractClosureExpr; // uses setParent
-  friend class Decl; // uses setParent
+  friend class Decl;                // uses setParent
 
-  template<class A, class B, class C>
+  template <class A, class B, class C>
   friend struct ::llvm::CastInfo;
-  
+
   // See swift/AST/Decl.h
   static DeclContext *castDeclToDeclContext(const Decl *D);
 
@@ -313,11 +314,12 @@ class alignas(1 << DeclContextAlignInBits) DeclContext
 public:
   LLVM_READONLY
   Decl *getAsDecl() {
-    return ParentAndKind.getInt() == ASTHierarchy::Decl ?
-      reinterpret_cast<Decl*>(this + 1) : nullptr;
+    return ParentAndKind.getInt() == ASTHierarchy::Decl
+               ? reinterpret_cast<Decl *>(this + 1)
+               : nullptr;
   }
   const Decl *getAsDecl() const {
-    return const_cast<DeclContext*>(this)->getAsDecl();
+    return const_cast<DeclContext *>(this)->getAsDecl();
   }
 
   DeclContext(DeclContextKind Kind, DeclContext *Parent)
@@ -403,7 +405,7 @@ public:
   /// - Generic types return a bound generic type using archetypes.
   /// - Non-type contexts return a null type.
   Type getDeclaredTypeInContext() const;
-  
+
   /// Gets the type being declared by this context.
   ///
   /// - Generic types return a bound generic type using interface types.
@@ -423,8 +425,8 @@ public:
   Type getSelfInterfaceType() const;
 
   /// Visit the generic parameter list of every outer context, innermost first.
-  void forEachGenericContext(
-    llvm::function_ref<void (GenericParamList *)> fn) const;
+  void
+  forEachGenericContext(llvm::function_ref<void(GenericParamList *)> fn) const;
 
   /// Returns the depth of this generic context, or in other words,
   /// the number of nested generic contexts minus one.
@@ -448,7 +450,7 @@ public:
   LLVM_READONLY
   DeclContext *getLocalContext();
   const DeclContext *getLocalContext() const {
-    return const_cast<DeclContext*>(this)->getLocalContext();
+    return const_cast<DeclContext *>(this)->getLocalContext();
   }
 
   /// Returns the innermost method context.
@@ -461,7 +463,7 @@ public:
   LLVM_READONLY
   AbstractFunctionDecl *getInnermostMethodContext();
   const AbstractFunctionDecl *getInnermostMethodContext() const {
-    return const_cast<DeclContext*>(this)->getInnermostMethodContext();
+    return const_cast<DeclContext *>(this)->getInnermostMethodContext();
   }
 
   /// Returns the innermost accessor context that belongs to a property.
@@ -473,7 +475,8 @@ public:
   LLVM_READONLY
   AccessorDecl *getInnermostPropertyAccessorContext();
   const AccessorDecl *getInnermostPropertyAccessorContext() const {
-    return const_cast<DeclContext*>(this)->getInnermostPropertyAccessorContext();
+    return const_cast<DeclContext *>(this)
+        ->getInnermostPropertyAccessorContext();
   }
 
   /// Returns the innermost type context.
@@ -494,8 +497,8 @@ public:
   LLVM_READONLY
   Decl *getInnermostDeclarationDeclContext();
   const Decl *getInnermostDeclarationDeclContext() const {
-    return
-        const_cast<DeclContext *>(this)->getInnermostDeclarationDeclContext();
+    return const_cast<DeclContext *>(this)
+        ->getInnermostDeclarationDeclContext();
   }
 
   /// Returns the topmost context that is a declaration, excluding ModuleDecl.
@@ -522,8 +525,8 @@ public:
   LLVM_READONLY
   DeclContext *getInnermostSkippedFunctionContext();
   const DeclContext *getInnermostSkippedFunctionContext() const {
-    return
-        const_cast<DeclContext *>(this)->getInnermostSkippedFunctionContext();
+    return const_cast<DeclContext *>(this)
+        ->getInnermostSkippedFunctionContext();
   }
 
   /// Returns the innermost ClosureExpr context that can propagate its captures
@@ -536,16 +539,15 @@ public:
 
   /// Returns the semantic parent of this context.  A context has a
   /// parent if and only if it is not a module context.
-  DeclContext *getParent() const {
-    return ParentAndKind.getPointer();
-  }
+  DeclContext *getParent() const { return ParentAndKind.getPointer(); }
 
   /// Returns the semantic parent for purposes of name lookup.
   DeclContext *getParentForLookup() const;
 
   /// Return true if this is a child of the specified other decl context.
   bool isChildContextOf(const DeclContext *Other) const {
-    if (this == Other) return false;
+    if (this == Other)
+      return false;
 
     for (const DeclContext *CurContext = this; CurContext;
          CurContext = CurContext->getParent())
@@ -642,14 +644,14 @@ public:
   /// \param member The member to search for.
   ///
   /// \param options Options that control name lookup, based on the
-  /// \c NL_* constants in \c NameLookupOptions.
+  /// \c NLOptions*  enum cases.
   ///
   /// \param[out] decls Will be populated with the declarations found by name
   /// lookup.
   ///
   /// \returns true if anything was found.
-  bool lookupQualified(Type type, DeclNameRef member,
-                       SourceLoc loc, NLOptions options,
+  bool lookupQualified(Type type, DeclNameRef member, SourceLoc loc,
+                       NLOptions options,
                        SmallVectorImpl<ValueDecl *> &decls) const;
 
   /// Look for the set of declarations with the given name within the
@@ -660,7 +662,7 @@ public:
   /// \param member The member to search for.
   ///
   /// \param options Options that control name lookup, based on the
-  /// \c NL_* constants in \c NameLookupOptions.
+  /// \c NLOptions* enum cases.
   ///
   /// \param[out] decls Will be populated with the declarations found by name
   /// lookup.
@@ -671,15 +673,15 @@ public:
                        SmallVectorImpl<ValueDecl *> &decls) const;
 
   /// Perform qualified lookup for the given member in the given module.
-  bool lookupQualified(ModuleDecl *module, DeclNameRef member,
-                       SourceLoc loc, NLOptions options,
+  bool lookupQualified(ModuleDecl *module, DeclNameRef member, SourceLoc loc,
+                       NLOptions options,
                        SmallVectorImpl<ValueDecl *> &decls) const;
 
   /// Look up all Objective-C methods with the given selector visible
   /// in the enclosing module.
-  void lookupAllObjCMethods(
-         ObjCSelector selector,
-         SmallVectorImpl<AbstractFunctionDecl *> &results) const;
+  void
+  lookupAllObjCMethods(ObjCSelector selector,
+                       SmallVectorImpl<AbstractFunctionDecl *> &results) const;
 
   /// Look up the custom availability domains matching the given identifier that
   /// are visible from this context.
@@ -723,8 +725,9 @@ public:
   /// \p declaring should be performed into \p overlays instead; since they
   /// are overlays, they will re-export \p declaring, but will also augment it
   /// with additional symbols.
-  void getSeparatelyImportedOverlays(
-      ModuleDecl *declaring, SmallVectorImpl<ModuleDecl *> &overlays) const;
+  void
+  getSeparatelyImportedOverlays(ModuleDecl *declaring,
+                                SmallVectorImpl<ModuleDecl *> &overlays) const;
 
   /// Retrieve the syntactic depth of this declaration context, i.e.,
   /// the number of non-module-scoped contexts.
@@ -749,7 +752,7 @@ public:
   SWIFT_DEBUG_DUMPER(dumpContext());
   unsigned printContext(llvm::raw_ostream &OS, unsigned indent = 0,
                         bool onlyAPartialLine = false) const;
-  
+
   // Some Decls are DeclContexts, but not all. See swift/AST/Decl.h
   static bool classof(const Decl *D);
 };
@@ -759,14 +762,14 @@ public:
 class DeclIterator {
   Decl *Current;
 
-public: 
+public:
   typedef std::forward_iterator_tag iterator_category;
   typedef Decl *value_type;
   typedef Decl *reference;
   typedef Decl *pointer; // Non-standard but convenient
   typedef std::ptrdiff_t difference_type;
 
-  DeclIterator(Decl *current = nullptr) : Current(current) { }
+  DeclIterator(Decl *current = nullptr) : Current(current) {}
 
   reference operator*() const { return Current; }
   pointer operator->() const { return Current; }
@@ -780,7 +783,7 @@ public:
   }
 
   friend bool operator==(DeclIterator lhs, DeclIterator rhs) {
-    return lhs.Current == rhs.Current; 
+    return lhs.Current == rhs.Current;
   }
 
   friend bool operator!=(DeclIterator lhs, DeclIterator rhs) {
@@ -793,7 +796,7 @@ public:
 using DeclRange = iterator_range<DeclIterator>;
 
 /// The kind of an \c IterableDeclContext.
-enum class IterableDeclContextKind : uint8_t {  
+enum class IterableDeclContextKind : uint8_t {
   NominalTypeDecl = 0,
   ExtensionDecl,
 };
@@ -818,7 +821,7 @@ class IterableDeclContext {
   /// The last declaration in this context, used for efficient insertion,
   /// along with the kind of iterable declaration context.
   mutable llvm::PointerIntPair<Decl *, 1, IterableDeclContextKind>
-    LastDeclAndKind;
+      LastDeclAndKind;
 
   /// The DeclID this IDC was deserialized from, if any. Used for named lazy
   /// member loading, as a key when doing lookup in this IDC.
@@ -859,7 +862,7 @@ class IterableDeclContext {
   /// members were checked for deserialization errors recursively.
   unsigned CheckedForDeserializeMemberError : 1;
 
-  template<class A, class B, class C>
+  template <class A, class B, class C>
   friend struct ::llvm::CastInfo;
 
   static IterableDeclContext *castDeclToIterableDeclContext(const Decl *D);
@@ -869,8 +872,12 @@ class IterableDeclContext {
   /// Retrieve the \c ASTContext in which this iterable context occurs.
   ASTContext &getASTContext() const;
 
-  void setCheckedForDeserializeMemberError(bool checked) { CheckedForDeserializeMemberError = checked; }
-  bool checkedForDeserializeMemberError() const { return CheckedForDeserializeMemberError; }
+  void setCheckedForDeserializeMemberError(bool checked) {
+    CheckedForDeserializeMemberError = checked;
+  }
+  bool checkedForDeserializeMemberError() const {
+    return CheckedForDeserializeMemberError;
+  }
 
 public:
   IterableDeclContext(IterableDeclContextKind kind)
@@ -895,21 +902,23 @@ public:
 
   bool hasUnparsedMembers() const;
 
-  void setDeserializedMembers(bool deserialized) { DeserializedMembers = deserialized; }
+  void setDeserializedMembers(bool deserialized) {
+    DeserializedMembers = deserialized;
+  }
   bool didDeserializeMembers() const { return DeserializedMembers; }
 
-  void setHasDeserializeMemberError(bool hasError) { HasDeserializeMemberError = hasError; }
+  void setHasDeserializeMemberError(bool hasError) {
+    HasDeserializeMemberError = hasError;
+  }
   bool hasDeserializeMemberError() const { return HasDeserializeMemberError; }
 
   /// This recursively checks whether members of this decl and their respective
-  /// members were deserialized correctly and emits a diagnostic in case of an error.
-  /// Requires accessing module and this decl's module are in the same package,
-  /// and this decl's module has package optimization enabled.
+  /// members were deserialized correctly and emits a diagnostic in case of an
+  /// error. Requires accessing module and this decl's module are in the same
+  /// package, and this decl's module has package optimization enabled.
   void checkDeserializeMemberErrorInPackage(ModuleDecl *accessingModule);
 
-  bool maybeHasOperatorDeclarations() const {
-    return HasOperatorDeclarations;
-  }
+  bool maybeHasOperatorDeclarations() const { return HasOperatorDeclarations; }
 
   void setMaybeHasOperatorDeclarations() {
     assert(hasUnparsedMembers());
@@ -945,11 +954,11 @@ public:
 
   /// Retrieve the current set of members in this context.
   ///
-  /// NOTE: This operation is an alias of \c getCurrentMembers() that is considered
-  /// deprecated. Most clients should not use this or \c getCurrentMembers(), but
-  /// instead should use one of the projections of members that provides a semantic
-  /// view, e.g., \c getParsedMembers(), \c getABIMembers(), \c getAllMembers(), and so
-  /// on.
+  /// NOTE: This operation is an alias of \c getCurrentMembers() that is
+  /// considered deprecated. Most clients should not use this or \c
+  /// getCurrentMembers(), but instead should use one of the projections of
+  /// members that provides a semantic view, e.g., \c getParsedMembers(), \c
+  /// getABIMembers(), \c getAllMembers(), and so on.
   DeclRange getMembers() const;
 
   /// Retrieve the current set of members in this context, without triggering
@@ -1040,17 +1049,15 @@ public:
   /// formed.
   ///
   /// \param lookupKind The kind of lookup to perform.
-  SmallVector<ProtocolDecl *, 2>
-  getLocalProtocols(ConformanceLookupKind lookupKind
-                      = ConformanceLookupKind::All) const;
+  SmallVector<ProtocolDecl *, 2> getLocalProtocols(
+      ConformanceLookupKind lookupKind = ConformanceLookupKind::All) const;
 
   /// Retrieve the set of protocol conformances associated with this
   /// declaration context.
   ///
   /// \param lookupKind The kind of lookup to perform.
-  SmallVector<ProtocolConformance *, 2>
-  getLocalConformances(ConformanceLookupKind lookupKind
-                         = ConformanceLookupKind::All) const;
+  SmallVector<ProtocolConformance *, 2> getLocalConformances(
+      ConformanceLookupKind lookupKind = ConformanceLookupKind::All) const;
 
   /// Retrieve diagnostics discovered while expanding conformances for this
   /// declaration context. This operation then removes those diagnostics from
@@ -1115,43 +1122,48 @@ SourceLoc extractNearestSourceLoc(const IterableDeclContext *idc);
 } // end namespace swift
 
 namespace llvm {
-  template<class FromTy>
-  struct CastInfo<::swift::DeclContext, FromTy, std::enable_if_t<is_simple_type<FromTy>::value>>
-      : public CastIsPossible<::swift::DeclContext, FromTy>,
-        public DefaultDoCastIfPossible<::swift::DeclContext *, FromTy,
-                                       CastInfo<::swift::DeclContext, FromTy>> {
-    static inline ::swift::DeclContext *castFailed() { return nullptr; }
+template <class FromTy>
+struct CastInfo<::swift::DeclContext, FromTy,
+                std::enable_if_t<is_simple_type<FromTy>::value>>
+    : public CastIsPossible<::swift::DeclContext, FromTy>,
+      public DefaultDoCastIfPossible<::swift::DeclContext *, FromTy,
+                                     CastInfo<::swift::DeclContext, FromTy>> {
+  static inline ::swift::DeclContext *castFailed() { return nullptr; }
 
-    static inline ::swift::DeclContext *doCast(const FromTy &val) {
-      return ::swift::DeclContext::castDeclToDeclContext(val);
-    }
-  };
+  static inline ::swift::DeclContext *doCast(const FromTy &val) {
+    return ::swift::DeclContext::castDeclToDeclContext(val);
+  }
+};
 
-  template<class FromTy>
-  struct CastInfo<::swift::GenericContext, FromTy, std::enable_if_t<is_simple_type<FromTy>::value>>
-      : public CastIsPossible<::swift::GenericContext, FromTy>,
-        public DefaultDoCastIfPossible<::swift::GenericContext *, FromTy,
-                                       CastInfo<::swift::GenericContext, FromTy>> {
-    static inline ::swift::GenericContext *castFailed() { return nullptr; }
+template <class FromTy>
+struct CastInfo<::swift::GenericContext, FromTy,
+                std::enable_if_t<is_simple_type<FromTy>::value>>
+    : public CastIsPossible<::swift::GenericContext, FromTy>,
+      public DefaultDoCastIfPossible<
+          ::swift::GenericContext *, FromTy,
+          CastInfo<::swift::GenericContext, FromTy>> {
+  static inline ::swift::GenericContext *castFailed() { return nullptr; }
 
-    static inline ::swift::GenericContext *doCast(const FromTy &val) {
-      auto *genCtxt = val->getAsGenericContext();
-      assert(genCtxt);
-      return const_cast<::swift::GenericContext *>(genCtxt);
-    }
-  };
+  static inline ::swift::GenericContext *doCast(const FromTy &val) {
+    auto *genCtxt = val->getAsGenericContext();
+    assert(genCtxt);
+    return const_cast<::swift::GenericContext *>(genCtxt);
+  }
+};
 
-  template<class FromTy>
-  struct CastInfo<::swift::IterableDeclContext, FromTy, std::enable_if_t<is_simple_type<FromTy>::value>>
-      : public CastIsPossible<::swift::IterableDeclContext, FromTy>,
-        public DefaultDoCastIfPossible<::swift::IterableDeclContext *, FromTy,
-                                       CastInfo<::swift::IterableDeclContext, FromTy>> {
-    static inline ::swift::IterableDeclContext *castFailed() { return nullptr; }
+template <class FromTy>
+struct CastInfo<::swift::IterableDeclContext, FromTy,
+                std::enable_if_t<is_simple_type<FromTy>::value>>
+    : public CastIsPossible<::swift::IterableDeclContext, FromTy>,
+      public DefaultDoCastIfPossible<
+          ::swift::IterableDeclContext *, FromTy,
+          CastInfo<::swift::IterableDeclContext, FromTy>> {
+  static inline ::swift::IterableDeclContext *castFailed() { return nullptr; }
 
-    static inline ::swift::IterableDeclContext *doCast(const FromTy &val) {
-      return ::swift::IterableDeclContext::castDeclToIterableDeclContext(val);
-    }
-  };
-}
+  static inline ::swift::IterableDeclContext *doCast(const FromTy &val) {
+    return ::swift::IterableDeclContext::castDeclToIterableDeclContext(val);
+  }
+};
+} // namespace llvm
 
 #endif

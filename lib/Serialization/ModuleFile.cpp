@@ -142,15 +142,13 @@ bool ModuleFile::allowCompilerErrors() const {
 bool ModuleFile::enableExtendedDeserializationRecovery() const {
   ASTContext &ctx = getContext();
   return ctx.LangOpts.EnableDeserializationRecovery &&
-         (allowCompilerErrors() ||
-          ctx.LangOpts.DebuggerSupport ||
+         (allowCompilerErrors() || ctx.LangOpts.DebuggerSupport ||
           ctx.ForceExtendedDeserializationRecovery);
 }
 
-Status
-ModuleFile::loadDependenciesForFileContext(const FileUnit *file,
-                                           SourceLoc diagLoc,
-                                           bool forTestable) {
+Status ModuleFile::loadDependenciesForFileContext(const FileUnit *file,
+                                                  SourceLoc diagLoc,
+                                                  bool forTestable) {
   ASTContext &ctx = getContext();
   ModuleDecl *M = file->getParentModule();
 
@@ -184,20 +182,19 @@ ModuleFile::loadDependenciesForFileContext(const FileUnit *file,
         if (hadError)
           return error(Status::FailedToLoadBridgingHeader);
       }
-      ModuleDecl *importedHeaderModule = clangImporter->getImportedHeaderModule();
-      dependency.Import = ImportedModule{ImportPath::Access(),
-                                         importedHeaderModule};
+      ModuleDecl *importedHeaderModule =
+          clangImporter->getImportedHeaderModule();
+      dependency.Import =
+          ImportedModule{ImportPath::Access(), importedHeaderModule};
       continue;
     }
 
     ModuleLoadingBehavior transitiveBehavior =
-      getTransitiveLoadingBehavior(dependency, forTestable);
+        getTransitiveLoadingBehavior(dependency, forTestable);
 
     if (ctx.LangOpts.EnableModuleLoadingRemarks) {
-      ctx.Diags.diagnose(diagLoc,
-                         diag::transitive_dependency_behavior,
-                         dependency.Core.getPrettyPrintedPath(),
-                         M->getName(),
+      ctx.Diags.diagnose(diagLoc, diag::transitive_dependency_behavior,
+                         dependency.Core.getPrettyPrintedPath(), M->getName(),
                          unsigned(transitiveBehavior));
     }
 
@@ -214,7 +211,7 @@ ModuleFile::loadDependenciesForFileContext(const FileUnit *file,
     auto importPath = builder.copyTo(ctx);
     auto modulePath = importPath.getModulePath(dependency.isScoped());
     auto accessPath = importPath.getAccessPath(dependency.isScoped());
-    auto module = getModule(modulePath, /*allowLoading*/true);
+    auto module = getModule(modulePath, /*allowLoading*/ true);
     if (!module || module->failedToLoad()) {
       // If we're missing the module we're an overlay for, treat that specially.
       if (modulePath.size() == 1 &&
@@ -272,11 +269,12 @@ Status ModuleFile::associateWithFileContext(FileUnit *file, SourceLoc diagLoc,
     M->recordHiddenTypeLayout(entry.getKey(), entry.getValue());
 
   // The real (on-disk) name of the module should be checked here as that's the
-  // actually loaded module. In case module aliasing is used when building the main
-  // module, e.g. -module-name MyModule -module-alias Foo=Bar, the loaded module
-  // that maps to 'Foo' is actually Bar.swiftmodule|.swiftinterface (applies to swift
-  // modules only), which is retrieved via M->getRealName(). If no module aliasing is
-  // used, M->getRealName() will return the same value as M->getName(), which is 'Foo'.
+  // actually loaded module. In case module aliasing is used when building the
+  // main module, e.g. -module-name MyModule -module-alias Foo=Bar, the loaded
+  // module that maps to 'Foo' is actually Bar.swiftmodule|.swiftinterface
+  // (applies to swift modules only), which is retrieved via M->getRealName().
+  // If no module aliasing is used, M->getRealName() will return the same value
+  // as M->getName(), which is 'Foo'.
   if (M->getRealName().str() != Core->Name) {
     return error(Status::NameMismatch);
   }
@@ -284,7 +282,7 @@ Status ModuleFile::associateWithFileContext(FileUnit *file, SourceLoc diagLoc,
   ASTContext &ctx = getContext();
   // Resolve potentially-SDK-relative module-defining .swiftinterface path
   ResolvedModuleDefiningFilename =
-       Core->resolveModuleDefiningFilePath(ctx.SearchPathOpts.getSDKPath());
+      Core->resolveModuleDefiningFilePath(ctx.SearchPathOpts.getSDKPath());
 
   llvm::Triple moduleTarget(llvm::Triple::normalize(Core->TargetTriple));
   if (!areCompatible(moduleTarget, ctx.LangOpts.Target)) {
@@ -299,21 +297,22 @@ Status ModuleFile::associateWithFileContext(FileUnit *file, SourceLoc diagLoc,
   }
 
   StringRef SDKPath = ctx.SearchPathOpts.getSDKPath();
-  // In Swift 6 mode, we do not inherit search paths from loaded non-SDK modules.
+  // In Swift 6 mode, we do not inherit search paths from loaded non-SDK
+  // modules.
   if (!ctx.isLanguageModeAtLeast(LanguageMode::v6) &&
       (SDKPath.empty() ||
        !Core->ModuleInputBuffer->getBufferIdentifier().starts_with(SDKPath))) {
     for (const auto &searchPath : Core->SearchPaths) {
       ctx.addSearchPath(
-        ctx.SearchPathOpts.SearchPathRemapper.remapPath(searchPath.Path),
-        searchPath.IsFramework,
-        searchPath.IsSystem);
+          ctx.SearchPathOpts.SearchPathRemapper.remapPath(searchPath.Path),
+          searchPath.IsFramework, searchPath.IsSystem);
     }
   }
 
   Status res = loadDependenciesForFileContext(file, diagLoc,
-                                            /*forTestable=*/false);
-  if (res != Status::Valid) return res;
+                                              /*forTestable=*/false);
+  if (res != Status::Valid)
+    return res;
 
   if (Core->Bits.HasEntryPoint) {
     FileContext->getParentModule()->registerEntryPointFile(
@@ -325,7 +324,7 @@ Status ModuleFile::associateWithFileContext(FileUnit *file, SourceLoc diagLoc,
 
 ModuleLoadingBehavior
 ModuleFile::getTransitiveLoadingBehavior(const Dependency &dependency,
-    bool forTestable) const {
+                                         bool forTestable) const {
   ASTContext &ctx = getContext();
   ModuleDecl *mod = FileContext->getParentModule();
 
@@ -348,11 +347,10 @@ bool ModuleFile::mayHaveDiagnosticsPointingAtBuffer() const {
   return !Core->importedHeaderInfo.contents.empty();
 }
 
-ModuleFile::~ModuleFile() { }
+ModuleFile::~ModuleFile() {}
 
-void ModuleFile::lookupValue(DeclName name,
-                             OptionSet<ModuleLookupFlags> flags,
-                             SmallVectorImpl<ValueDecl*> &results) {
+void ModuleFile::lookupValue(DeclName name, OptionSet<ModuleLookupFlags> flags,
+                             SmallVectorImpl<ValueDecl *> &results) {
   PrettyStackTraceModuleFile stackEntry(*this);
 
   if (Core->TopLevelDecls) {
@@ -428,14 +426,13 @@ ModuleFile::getModuleName(ASTContext &Ctx, StringRef modulePath,
 
   // Load the module file without validation.
   std::unique_ptr<llvm::MemoryBuffer> newBuf =
-    llvm::MemoryBuffer::getMemBuffer(llvm::MemoryBufferRef(*moduleBuf.get()),
-    /*RequiresNullTerminator=*/false);
+      llvm::MemoryBuffer::getMemBuffer(llvm::MemoryBufferRef(*moduleBuf.get()),
+                                       /*RequiresNullTerminator=*/false);
   std::shared_ptr<const ModuleFileSharedCore> loadedModuleFile;
   bool isFramework = false;
   serialization::ValidationInfo loadInfo = ModuleFileSharedCore::load(
       "", "", std::move(newBuf), nullptr, nullptr,
-      /*isFramework=*/isFramework,
-      Ctx.LangOpts.SDKName, Ctx.LangOpts.Target,
+      /*isFramework=*/isFramework, Ctx.LangOpts.SDKName, Ctx.LangOpts.Target,
       Ctx.LangOpts.hasFeature(Feature::Embedded),
       Ctx.SearchPathOpts.DeserializedPathRecoverer, loadedModuleFile);
   Name = loadedModuleFile->Name.str();
@@ -579,8 +576,8 @@ void ModuleFile::getImportDecls(SmallVectorImpl<Decl *> &Results) {
 
       ImportPath::Builder importPath(Ctx, Dep.Core.RawPath, /*separator=*/'\0');
 
-      if (importPath.size() == 1
-          && importPath.front().Item == Ctx.StdlibModuleName)
+      if (importPath.size() == 1 &&
+          importPath.front().Item == Ctx.StdlibModuleName)
         continue;
 
       auto modulePath = importPath.get().getModulePath(Dep.isScoped());
@@ -603,9 +600,9 @@ void ModuleFile::getImportDecls(SmallVectorImpl<Decl *> &Results) {
             TopLevelModule = Ctx.getLoadedModule(modulePath.getTopLevelPath());
 
           SmallVector<ValueDecl *, 8> Decls;
-          TopLevelModule->lookupQualified(
-              TopLevelModule, DeclNameRef(ScopeID),
-              SourceLoc(), NL_QualifiedDefault, Decls);
+          TopLevelModule->lookupQualified(TopLevelModule, DeclNameRef(ScopeID),
+                                          SourceLoc(),
+                                          NLOptions::QualifiedDefault, Decls);
           std::optional<ImportKind> FoundKind =
               ImportDecl::findBestImportKind(Decls);
           assert(FoundKind.has_value() &&
@@ -715,10 +712,8 @@ void ModuleFile::loadExtensions(NominalTypeDecl *nominal) {
 }
 
 void ModuleFile::loadObjCMethods(
-       NominalTypeDecl *typeDecl,
-       ObjCSelector selector,
-       bool isInstanceMethod,
-       llvm::TinyPtrVector<AbstractFunctionDecl *> &methods) {
+    NominalTypeDecl *typeDecl, ObjCSelector selector, bool isInstanceMethod,
+    llvm::TinyPtrVector<AbstractFunctionDecl *> &methods) {
   // If we don't have an Objective-C method table, there's nothing to do.
   if (!Core->ObjCMethods)
     return;
@@ -729,7 +724,8 @@ void ModuleFile::loadObjCMethods(
     return;
   }
 
-  std::string ownerName = Mangle::ASTMangler(typeDecl->getASTContext()).mangleNominalType(typeDecl);
+  std::string ownerName =
+      Mangle::ASTMangler(typeDecl->getASTContext()).mangleNominalType(typeDecl);
   auto results = *known;
   for (const auto &result : results) {
     // If the method is the wrong kind (instance vs. class), skip it.
@@ -748,8 +744,7 @@ void ModuleFile::loadObjCMethods(
       continue;
     }
 
-    if (auto func = dyn_cast_or_null<AbstractFunctionDecl>(
-                      funcOrError.get())) {
+    if (auto func = dyn_cast_or_null<AbstractFunctionDecl>(funcOrError.get())) {
       methods.push_back(func);
     }
   }
@@ -777,9 +772,8 @@ void ModuleFile::loadDerivativeFunctionConfigurations(
     auto derivativeGenSig = derivativeGenSigOrError.get();
     // NOTE(TF-1038): Result indices are currently unsupported in derivative
     // registration attributes. In the meantime, always use all results.
-    auto *resultIndices =
-      autodiff::getFunctionSemanticResultIndices(originalAFD,
-                                                 parameterIndices);
+    auto *resultIndices = autodiff::getFunctionSemanticResultIndices(
+        originalAFD, parameterIndices);
     results.insert({parameterIndices, resultIndices, derivativeGenSig});
   }
 }
@@ -817,7 +811,7 @@ ModuleFile::loadNamedMembers(const IterableDeclContext *IDC, DeclBaseName N,
 
   BitOffset subTableOffset = *i;
   std::unique_ptr<SerializedDeclMembersTable> &subTable =
-    DeclMembersTables[subTableOffset];
+      DeclMembersTables[subTableOffset];
   if (!subTable) {
     BCOffsetRAII restoreOffset(DeclMemberTablesCursor);
     if (diagnoseFatalIfNotSuccess(
@@ -858,9 +852,8 @@ ModuleFile::loadNamedMembers(const IterableDeclContext *IDC, DeclBaseName N,
   return results;
 }
 
-void ModuleFile::lookupClassMember(ImportPath::Access accessPath,
-                                   DeclName name,
-                                   SmallVectorImpl<ValueDecl*> &results) {
+void ModuleFile::lookupClassMember(ImportPath::Access accessPath, DeclName name,
+                                   SmallVectorImpl<ValueDecl *> &results) {
   PrettyStackTraceModuleFile stackEntry(*this);
   assert(accessPath.size() <= 1 && "can only refer to top-level decls");
 
@@ -966,13 +959,13 @@ void ModuleFile::lookupClassMembers(ImportPath::Access accessPath,
 
   for (const auto &list : Core->ClassMembersForDynamicLookup->data()) {
     for (auto item : list) {
-        auto decl = getDeclChecked(item.second);
-        if (!decl) {
-          if (!getContext().LangOpts.EnableDeserializationRecovery)
-            fatal(decl.takeError());
-          diagnoseAndConsumeError(decl.takeError());
-          continue;
-        }
+      auto decl = getDeclChecked(item.second);
+      if (!decl) {
+        if (!getContext().LangOpts.EnableDeserializationRecovery)
+          fatal(decl.takeError());
+        diagnoseAndConsumeError(decl.takeError());
+        continue;
+      }
 
       consumer.foundDecl(cast<ValueDecl>(decl.get()),
                          DeclVisibilityKind::DynamicLookup,
@@ -982,22 +975,23 @@ void ModuleFile::lookupClassMembers(ImportPath::Access accessPath,
 }
 
 void ModuleFile::lookupObjCMethods(
-       ObjCSelector selector,
-       SmallVectorImpl<AbstractFunctionDecl *> &results) {
+    ObjCSelector selector, SmallVectorImpl<AbstractFunctionDecl *> &results) {
   // If we don't have an Objective-C method table, there's nothing to do.
-  if (!Core->ObjCMethods) return;
+  if (!Core->ObjCMethods)
+    return;
 
   // Look for all methods in the module file with this selector.
   auto known = Core->ObjCMethods->find(selector);
-  if (known == Core->ObjCMethods->end()) return;
+  if (known == Core->ObjCMethods->end())
+    return;
 
   auto found = *known;
   for (const auto &result : found) {
     // Deserialize the method and add it to the list.
     auto declOrError = getDeclChecked(std::get<2>(result));
     if (!declOrError) {
-        diagnoseAndConsumeError(declOrError.takeError());
-        continue;
+      diagnoseAndConsumeError(declOrError.takeError());
+      continue;
     }
 
     if (auto func = dyn_cast_or_null<AbstractFunctionDecl>(declOrError.get()))
@@ -1005,8 +999,8 @@ void ModuleFile::lookupObjCMethods(
   }
 }
 
-void
-ModuleFile::collectLinkLibraries(ModuleDecl::LinkLibraryCallback callback) const {
+void ModuleFile::collectLinkLibraries(
+    ModuleDecl::LinkLibraryCallback callback) const {
   for (const auto &lib : Core->LinkLibraries)
     callback(lib);
   if (Core->Bits.IsFramework)
@@ -1015,8 +1009,8 @@ ModuleFile::collectLinkLibraries(ModuleDecl::LinkLibraryCallback callback) const
 }
 
 void ModuleFile::getTopLevelDecls(
-       SmallVectorImpl<Decl *> &results,
-       llvm::function_ref<bool(DeclAttributes)> matchAttributes) {
+    SmallVectorImpl<Decl *> &results,
+    llvm::function_ref<bool(DeclAttributes)> matchAttributes) {
   PrettyStackTraceModuleFile stackEntry(*this);
   for (DeclID entry : Core->OrderedTopLevelDecls) {
     Expected<Decl *> declOrError = getDeclChecked(entry, matchAttributes);
@@ -1068,7 +1062,7 @@ void ModuleFile::getOperatorDecls(SmallVectorImpl<OperatorDecl *> &results) {
 }
 
 void ModuleFile::getPrecedenceGroups(
-       SmallVectorImpl<PrecedenceGroupDecl*> &results) {
+    SmallVectorImpl<PrecedenceGroupDecl *> &results) {
   PrettyStackTraceModuleFile stackEntry(*this);
   if (Core->PrecedenceGroupDecls) {
     for (auto entry : Core->PrecedenceGroupDecls->data()) {
@@ -1078,8 +1072,7 @@ void ModuleFile::getPrecedenceGroups(
   }
 }
 
-void
-ModuleFile::getLocalTypeDecls(SmallVectorImpl<TypeDecl *> &results) {
+void ModuleFile::getLocalTypeDecls(SmallVectorImpl<TypeDecl *> &results) {
   PrettyStackTraceModuleFile stackEntry(*this);
   if (!Core->LocalTypeDecls)
     return;
@@ -1092,9 +1085,8 @@ ModuleFile::getLocalTypeDecls(SmallVectorImpl<TypeDecl *> &results) {
   }
 }
 
-void
-ModuleFile::getOpaqueReturnTypeDecls(SmallVectorImpl<OpaqueTypeDecl *> &results)
-{
+void ModuleFile::getOpaqueReturnTypeDecls(
+    SmallVectorImpl<OpaqueTypeDecl *> &results) {
   PrettyStackTraceModuleFile stackEntry(*this);
   if (!Core->OpaqueReturnTypeDecls)
     return;
@@ -1105,7 +1097,8 @@ ModuleFile::getOpaqueReturnTypeDecls(SmallVectorImpl<OpaqueTypeDecl *> &results)
   }
 }
 
-void ModuleFile::getDisplayDecls(SmallVectorImpl<Decl *> &results, bool recursive) {
+void ModuleFile::getDisplayDecls(SmallVectorImpl<Decl *> &results,
+                                 bool recursive) {
   if (UnderlyingModule)
     UnderlyingModule->getDisplayDecls(results, recursive);
 
@@ -1143,7 +1136,7 @@ bool ModuleFile::hasLoadedSwiftDoc() const {
 
 void ModuleFile::collectSerializedSearchPath(
     llvm::function_ref<void(StringRef)> callback) const {
-  for (auto path: Core->SearchPaths) {
+  for (auto path : Core->SearchPaths) {
     callback(path.Path);
   }
 }
@@ -1161,13 +1154,13 @@ void ModuleFile::collectBasicSourceFileInfo(
     auto fileID = readNext<uint32_t>(Cursor);
 
     // InterfaceHashIncludingTypeMembers (fixed length string).
-    auto fpStrIncludingTypeMembers = StringRef{reinterpret_cast<const char *>(Cursor),
-                           Fingerprint::DIGEST_LENGTH};
+    auto fpStrIncludingTypeMembers = StringRef{
+        reinterpret_cast<const char *>(Cursor), Fingerprint::DIGEST_LENGTH};
     Cursor += Fingerprint::DIGEST_LENGTH;
 
     // InterfaceHashExcludingTypeMembers (fixed length string).
-    auto fpStrExcludingTypeMembers = StringRef{reinterpret_cast<const char *>(Cursor),
-                           Fingerprint::DIGEST_LENGTH};
+    auto fpStrExcludingTypeMembers = StringRef{
+        reinterpret_cast<const char *>(Cursor), Fingerprint::DIGEST_LENGTH};
     Cursor += Fingerprint::DIGEST_LENGTH;
 
     // LastModified (nanoseconds since epoch).
@@ -1181,7 +1174,7 @@ void ModuleFile::collectBasicSourceFileInfo(
     filePath = filePath.slice(0, terminatorOffset);
 
     auto fingerprintIncludingTypeMembers =
-      Fingerprint::fromString(fpStrIncludingTypeMembers);
+        Fingerprint::fromString(fpStrIncludingTypeMembers);
     if (!fingerprintIncludingTypeMembers) {
       ABORT([&](auto &out) {
         out << "Unconvertible fingerprint including type members '"
@@ -1189,18 +1182,17 @@ void ModuleFile::collectBasicSourceFileInfo(
       });
     }
     auto fingerprintExcludingTypeMembers =
-      Fingerprint::fromString(fpStrExcludingTypeMembers);
+        Fingerprint::fromString(fpStrExcludingTypeMembers);
     if (!fingerprintExcludingTypeMembers) {
       ABORT([&](auto &out) {
         out << "Unconvertible fingerprint excluding type members '"
             << fpStrExcludingTypeMembers << "'";
       });
     }
-    callback(BasicSourceFileInfo(filePath,
-                                 fingerprintIncludingTypeMembers.value(),
-                                 fingerprintExcludingTypeMembers.value(),
-                                 llvm::sys::TimePoint<>(std::chrono::nanoseconds(timestamp)),
-                                 fileSize));
+    callback(BasicSourceFileInfo(
+        filePath, fingerprintIncludingTypeMembers.value(),
+        fingerprintExcludingTypeMembers.value(),
+        llvm::sys::TimePoint<>(std::chrono::nanoseconds(timestamp)), fileSize));
   }
 }
 
@@ -1403,18 +1395,16 @@ Identifier ModuleFile::getDiscriminatorForPrivateDecl(const Decl *D) {
 void ModuleFile::verify() const {
 #ifndef NDEBUG
   const auto &Context = getContext();
-  for (const Serialized<Decl*> &next : Decls)
+  for (const Serialized<Decl *> &next : Decls)
     if (next.isComplete() && swift::shouldVerify(next, Context))
       swift::verify(next);
 #endif
 }
 
-bool SerializedASTFile::hasEntryPoint() const {
-  return File.hasEntryPoint();
-}
+bool SerializedASTFile::hasEntryPoint() const { return File.hasEntryPoint(); }
 
 bool SerializedASTFile::getAllGenericSignatures(
-                       SmallVectorImpl<GenericSignature> &genericSignatures) {
+    SmallVectorImpl<GenericSignature> &genericSignatures) {
   genericSignatures.clear();
   for (unsigned index : indices(File.GenericSignatures)) {
     if (auto genericSig = File.getGenericSignature(index + 1))

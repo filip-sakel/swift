@@ -34,7 +34,7 @@ namespace swift {
 #include "swift/Basic/ImplementTypeIDZone.h"
 #undef SWIFT_TYPEID_ZONE
 #undef SWIFT_TYPEID_HEADER
-}
+} // namespace swift
 
 //----------------------------------------------------------------------------//
 // Referenced inherited decls computation.
@@ -98,7 +98,8 @@ InheritedProtocolsRequest::getCachedResult() const {
   return proto->InheritedProtocols;
 }
 
-void InheritedProtocolsRequest::cacheResult(ArrayRef<ProtocolDecl *> PDs) const {
+void InheritedProtocolsRequest::cacheResult(
+    ArrayRef<ProtocolDecl *> PDs) const {
   auto proto = std::get<0>(getStorage());
   proto->InheritedProtocols = PDs;
   proto->setInheritedProtocolsValid();
@@ -125,7 +126,8 @@ AllInheritedProtocolsRequest::getCachedResult() const {
   return proto->AllInheritedProtocols;
 }
 
-void AllInheritedProtocolsRequest::cacheResult(ArrayRef<ProtocolDecl *> PDs) const {
+void AllInheritedProtocolsRequest::cacheResult(
+    ArrayRef<ProtocolDecl *> PDs) const {
   auto proto = std::get<0>(getStorage());
   proto->AllInheritedProtocols = PDs;
   proto->setAllInheritedProtocolsValid();
@@ -165,16 +167,15 @@ void HasMissingDesignatedInitializersRequest::cacheResult(bool result) const {
   classDecl->setHasMissingDesignatedInitializers(result);
 }
 
-bool
-HasMissingDesignatedInitializersRequest::evaluate(Evaluator &evaluator,
-                                           ClassDecl *subject) const {
+bool HasMissingDesignatedInitializersRequest::evaluate(
+    Evaluator &evaluator, ClassDecl *subject) const {
   // Short-circuit and check for the attribute here.
   if (subject->getAttrs().hasAttribute<HasMissingDesignatedInitializersAttr>())
     return true;
 
   AccessScope scope =
-    subject->getFormalAccessScope(/*useDC*/nullptr,
-                                  /*treatUsableFromInlineAsPublic*/true);
+      subject->getFormalAccessScope(/*useDC*/ nullptr,
+                                    /*treatUsableFromInlineAsPublic*/ true);
   // This flag only makes sense for public types that will be written in the
   // module.
   if (!scope.isPublic())
@@ -193,8 +194,8 @@ HasMissingDesignatedInitializersRequest::evaluate(Evaluator &evaluator,
     if (!init->isDesignatedInit())
       return false;
     AccessScope scope =
-        init->getFormalAccessScope(/*useDC*/nullptr,
-                                   /*treatUsableFromInlineAsPublic*/true);
+        init->getFormalAccessScope(/*useDC*/ nullptr,
+                                   /*treatUsableFromInlineAsPublic*/ true);
     return !scope.isPublic();
   });
 }
@@ -217,8 +218,7 @@ void ExtendedNominalRequest::cacheResult(NominalTypeDecl *value) const {
 }
 
 void ExtendedNominalRequest::writeDependencySink(
-    evaluator::DependencyCollector &tracker,
-    NominalTypeDecl *value) const {
+    evaluator::DependencyCollector &tracker, NominalTypeDecl *value) const {
   if (!value)
     return;
 
@@ -274,10 +274,10 @@ void GenericParamListRequest::cacheResult(GenericParamList *params) const {
 
   assert(context->GenericParamsAndState.getInt() == GenericParamsState::Parsed);
   bool hadParsedGenericParams =
-  context->GenericParamsAndState.getPointer() != nullptr;
+      context->GenericParamsAndState.getPointer() != nullptr;
   auto newState = hadParsedGenericParams
-      ? GenericParamsState::ParsedAndTypeChecked
-      : GenericParamsState::TypeChecked;
+                      ? GenericParamsState::ParsedAndTypeChecked
+                      : GenericParamsState::TypeChecked;
   context->GenericParamsAndState.setPointerAndInt(params, newState);
 }
 
@@ -455,8 +455,7 @@ void LookupConformanceRequest::writeDependencySink(
 //----------------------------------------------------------------------------//
 
 void UnqualifiedLookupRequest::writeDependencySink(
-    evaluator::DependencyCollector &track,
-    const LookupResult &res) const {
+    evaluator::DependencyCollector &track, const LookupResult &res) const {
   auto &desc = std::get<0>(getStorage());
   track.addTopLevelName(desc.Name.getBaseName());
 }
@@ -465,7 +464,8 @@ void UnqualifiedLookupRequest::writeDependencySink(
 // SPIGroupsRequest computation.
 //----------------------------------------------------------------------------//
 
-std::optional<llvm::ArrayRef<Identifier>> SPIGroupsRequest::getCachedResult() const {
+std::optional<llvm::ArrayRef<Identifier>>
+SPIGroupsRequest::getCachedResult() const {
   auto *decl = std::get<0>(getStorage());
   if (decl->hasNoSPIGroups())
     return ArrayRef<Identifier>();
@@ -578,83 +578,76 @@ swift::extractNearestSourceLoc(CustomRefCountingOperationDescriptor desc) {
 // so it doesn't break caching for those immediate requests.
 
 /// Exclude macros in the unqualified lookup descriptor if we need to.
-static UnqualifiedLookupDescriptor contextualizeOptions(
-    UnqualifiedLookupDescriptor descriptor) {
+static UnqualifiedLookupDescriptor
+contextualizeOptions(UnqualifiedLookupDescriptor descriptor) {
   if (!descriptor.Options.contains(
-          UnqualifiedLookupFlags::ExcludeMacroExpansions)
-      && namelookup::isInMacroArgument(
-                         descriptor.DC->getParentSourceFile(), descriptor.Loc))
+          UnqualifiedLookupFlags::ExcludeMacroExpansions) &&
+      namelookup::isInMacroArgument(descriptor.DC->getParentSourceFile(),
+                                    descriptor.Loc))
     descriptor.Options |= UnqualifiedLookupFlags::ExcludeMacroExpansions;
-  if (!descriptor.Options.contains(UnqualifiedLookupFlags::ABIProviding)
-      && namelookup::isInABIAttr(
-                         descriptor.DC->getParentSourceFile(), descriptor.Loc))
+  if (!descriptor.Options.contains(UnqualifiedLookupFlags::ABIProviding) &&
+      namelookup::isInABIAttr(descriptor.DC->getParentSourceFile(),
+                              descriptor.Loc))
     descriptor.Options |= UnqualifiedLookupFlags::ABIProviding;
 
   return descriptor;
 }
 
 /// Exclude macros in the direct lookup descriptor if we need to.
-static DirectLookupDescriptor contextualizeOptions(
-    DirectLookupDescriptor descriptor, SourceLoc loc) {
+static DirectLookupDescriptor
+contextualizeOptions(DirectLookupDescriptor descriptor, SourceLoc loc) {
   if (!descriptor.Options.contains(
-          NominalTypeDecl::LookupDirectFlags::ExcludeMacroExpansions)
-      && namelookup::isInMacroArgument(
-                         descriptor.DC->getParentSourceFile(), loc))
+          NominalTypeDecl::LookupDirectFlags::ExcludeMacroExpansions) &&
+      namelookup::isInMacroArgument(descriptor.DC->getParentSourceFile(), loc))
     descriptor.Options |=
         NominalTypeDecl::LookupDirectFlags::ExcludeMacroExpansions;
   if (!descriptor.Options.contains(
-          NominalTypeDecl::LookupDirectFlags::ABIProviding)
-      && namelookup::isInABIAttr(
-                         descriptor.DC->getParentSourceFile(), loc))
-    descriptor.Options |=
-        NominalTypeDecl::LookupDirectFlags::ABIProviding;
+          NominalTypeDecl::LookupDirectFlags::ABIProviding) &&
+      namelookup::isInABIAttr(descriptor.DC->getParentSourceFile(), loc))
+    descriptor.Options |= NominalTypeDecl::LookupDirectFlags::ABIProviding;
 
   return descriptor;
 }
 
 /// Exclude macros in the name lookup options if we need to.
-static NLOptions
-contextualizeOptions(const DeclContext *dc, SourceLoc loc,
-                     NLOptions options) {
-  if (!(options & NL_ExcludeMacroExpansions)
-      && namelookup::isInMacroArgument(dc->getParentSourceFile(), loc))
-    options |= NL_ExcludeMacroExpansions;
-  if (!(options & NL_ABIProviding)
-      && namelookup::isInABIAttr(dc->getParentSourceFile(), loc))
-    options |= NL_ABIProviding;
+static NLOptions contextualizeOptions(const DeclContext *dc, SourceLoc loc,
+                                      NLOptions options) {
+  if (!(options & NLOptions::ExcludeMacroExpansions) &&
+      namelookup::isInMacroArgument(dc->getParentSourceFile(), loc))
+    options |= NLOptions::ExcludeMacroExpansions;
+  if (!(options & NLOptions::ABIProviding) &&
+      namelookup::isInABIAttr(dc->getParentSourceFile(), loc))
+    options |= NLOptions::ABIProviding;
 
   return options;
 }
 
 UnqualifiedLookupRequest::UnqualifiedLookupRequest(
-    UnqualifiedLookupDescriptor descriptor
-) : SimpleRequest(contextualizeOptions(descriptor)) { }
+    UnqualifiedLookupDescriptor descriptor)
+    : SimpleRequest(contextualizeOptions(descriptor)) {}
 
 LookupInModuleRequest::LookupInModuleRequest(
-      const DeclContext *moduleOrFile, DeclName name, bool hasModuleSelector,
-      NLKind lookupKind, namelookup::ResolutionKind resolutionKind,
-      const DeclContext *moduleScopeContext,
-      SourceLoc loc, NLOptions options
- ) : SimpleRequest(moduleOrFile, name, hasModuleSelector, lookupKind,
-                   resolutionKind, moduleScopeContext,
-                   contextualizeOptions(moduleOrFile, loc, options)) { }
+    const DeclContext *moduleOrFile, DeclName name, bool hasModuleSelector,
+    NLKind lookupKind, namelookup::ResolutionKind resolutionKind,
+    const DeclContext *moduleScopeContext, SourceLoc loc, NLOptions options)
+    : SimpleRequest(moduleOrFile, name, hasModuleSelector, lookupKind,
+                    resolutionKind, moduleScopeContext,
+                    contextualizeOptions(moduleOrFile, loc, options)) {}
 
 ModuleQualifiedLookupRequest::ModuleQualifiedLookupRequest(
-    const DeclContext *dc, ModuleDecl *module, DeclNameRef name,
-    SourceLoc loc, NLOptions options
- ) : SimpleRequest(dc, module, name,
-                   contextualizeOptions(dc, loc, options)) { }
+    const DeclContext *dc, ModuleDecl *module, DeclNameRef name, SourceLoc loc,
+    NLOptions options)
+    : SimpleRequest(dc, module, name, contextualizeOptions(dc, loc, options)) {}
 
 QualifiedLookupRequest::QualifiedLookupRequest(
-                       const DeclContext *dc,
-                       SmallVector<NominalTypeDecl *, 4> decls,
-                       DeclNameRef name,
-                       SourceLoc loc, NLOptions options
-) : SimpleRequest(dc, std::move(decls), name,
-                  contextualizeOptions(dc, loc, options)) { }
+    const DeclContext *dc, SmallVector<NominalTypeDecl *, 4> decls,
+    DeclNameRef name, SourceLoc loc, NLOptions options)
+    : SimpleRequest(dc, std::move(decls), name,
+                    contextualizeOptions(dc, loc, options)) {}
 
-DirectLookupRequest::DirectLookupRequest(DirectLookupDescriptor descriptor, SourceLoc loc)
-    : SimpleRequest(contextualizeOptions(descriptor, loc)) { }
+DirectLookupRequest::DirectLookupRequest(DirectLookupDescriptor descriptor,
+                                         SourceLoc loc)
+    : SimpleRequest(contextualizeOptions(descriptor, loc)) {}
 
 // Implement the clang importer type zone.
 #define SWIFT_TYPEID_ZONE ClangImporter

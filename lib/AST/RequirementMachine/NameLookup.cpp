@@ -21,10 +21,8 @@
 using namespace swift;
 using namespace rewriting;
 
-void
-swift::rewriting::lookupConcreteNestedType(
-    Type baseType,
-    Identifier name,
+void swift::rewriting::lookupConcreteNestedType(
+    Type baseType, Identifier name,
     SmallVectorImpl<TypeDecl *> &concreteDecls) {
   if (auto *decl = baseType->getAnyNominal())
     lookupConcreteNestedType(decl, name, concreteDecls);
@@ -41,22 +39,20 @@ swift::rewriting::lookupConcreteNestedType(
   }
 }
 
-void
-swift::rewriting::lookupConcreteNestedType(
-    NominalTypeDecl *decl,
-    Identifier name,
+void swift::rewriting::lookupConcreteNestedType(
+    NominalTypeDecl *decl, Identifier name,
     SmallVectorImpl<TypeDecl *> &concreteDecls) {
   SmallVector<ValueDecl *, 2> foundMembers;
   decl->getParentModule()->lookupQualified(
       decl, DeclNameRef(name), decl->getLoc(),
-      NL_QualifiedDefault | NL_OnlyTypes | NL_ProtocolMembers,
+      NLOptions::QualifiedDefault | NLOptions::OnlyTypes |
+          NLOptions::ProtocolMembers,
       foundMembers);
   for (auto member : foundMembers)
     concreteDecls.push_back(cast<TypeDecl>(member));
 }
 
-TypeDecl *
-swift::rewriting::findBestConcreteNestedType(
+TypeDecl *swift::rewriting::findBestConcreteNestedType(
     SmallVectorImpl<TypeDecl *> &concreteDecls) {
   if (concreteDecls.empty())
     return nullptr;

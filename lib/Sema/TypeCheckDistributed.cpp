@@ -13,24 +13,25 @@
 // This file implements type checking support for Swift's concurrency model.
 //
 //===----------------------------------------------------------------------===//
-#include "TypeCheckConcurrency.h"
 #include "TypeCheckDistributed.h"
+#include "TypeCheckConcurrency.h"
 #include "TypeChecker.h"
-#include "swift/Strings.h"
+#include "swift/AST/ASTPrinter.h"
 #include "swift/AST/ASTWalker.h"
 #include "swift/AST/ConformanceLookup.h"
+#include "swift/AST/DistributedDecl.h"
+#include "swift/AST/ExistentialLayout.h"
+#include "swift/AST/ImportCache.h"
 #include "swift/AST/Initializer.h"
+#include "swift/AST/LookupKinds.h"
+#include "swift/AST/NameLookupRequests.h"
 #include "swift/AST/ParameterList.h"
 #include "swift/AST/ProtocolConformance.h"
-#include "swift/AST/DistributedDecl.h"
-#include "swift/AST/NameLookupRequests.h"
 #include "swift/AST/TypeCheckRequests.h"
 #include "swift/AST/TypeVisitor.h"
-#include "swift/AST/ImportCache.h"
-#include "swift/AST/ExistentialLayout.h"
 #include "swift/Basic/Assertions.h"
 #include "swift/Basic/Defer.h"
-#include "swift/AST/ASTPrinter.h"
+#include "swift/Strings.h"
 
 using namespace swift;
 
@@ -43,9 +44,8 @@ bool swift::ensureDistributedModuleLoaded(const ValueDecl *decl) {
   return moduleAvailable;
 }
 
-bool
-DistributedModuleIsAvailableRequest::evaluate(Evaluator &evaluator,
-                                              const ValueDecl *decl) const {
+bool DistributedModuleIsAvailableRequest::evaluate(
+    Evaluator &evaluator, const ValueDecl *decl) const {
   auto &C = decl->getASTContext();
 
   auto DistributedModule = C.getLoadedModule(C.Id_Distributed);
@@ -87,8 +87,8 @@ static AbstractFunctionDecl *findDistributedAdHocRequirement(
   }
 
   llvm::SmallVector<ValueDecl *, 2> results;
-  decl->lookupQualified(decl, DeclNameRef(identifier),
-                        SourceLoc(), NL_QualifiedDefault, results);
+  decl->lookupQualified(decl, DeclNameRef(identifier), SourceLoc(),
+                        NLOptions::QualifiedDefault, results);
   for (auto value : results) {
     auto func = dyn_cast<AbstractFunctionDecl>(value);
     if (func && matchFn(func))
@@ -143,8 +143,8 @@ GetDistributedTargetInvocationEncoderRecordErrorTypeFunctionRequest::evaluate(
 }
 
 AbstractFunctionDecl *
-GetDistributedTargetInvocationDecoderDecodeNextArgumentFunctionRequest::evaluate(
-    Evaluator &evaluator, NominalTypeDecl *decl) const {
+GetDistributedTargetInvocationDecoderDecodeNextArgumentFunctionRequest::
+    evaluate(Evaluator &evaluator, NominalTypeDecl *decl) const {
   auto &C = decl->getASTContext();
   return findDistributedAdHocRequirement(
       decl, C.Id_decodeNextArgument, [](AbstractFunctionDecl *func) {
@@ -178,13 +178,12 @@ void swift::diagnoseDistributedFunctionInNonDistributedActorProtocol(
   }
 }
 
-
 /// Add Fix-It text for the given nominal type to adopt Codable.
 ///
 /// Useful when 'Codable' is the 'SerializationRequirement' and a non-Codable
 /// function parameter or return value type is detected.
-void swift::addCodableFixIt(
-    const NominalTypeDecl *nominal, InFlightDiagnostic &diag) {
+void swift::addCodableFixIt(const NominalTypeDecl *nominal,
+                            InFlightDiagnostic &diag) {
   if (nominal->getInherited().empty()) {
     SourceLoc fixItLoc = nominal->getBraces().Start;
     diag.fixItInsert(fixItLoc, ": Codable");
@@ -196,8 +195,8 @@ void swift::addCodableFixIt(
 
 // ==== ------------------------------------------------------------------------
 
-bool IsDistributedActorRequest::evaluate(
-    Evaluator &evaluator, NominalTypeDecl *nominal) const {
+bool IsDistributedActorRequest::evaluate(Evaluator &evaluator,
+                                         NominalTypeDecl *nominal) const {
   // Protocols are actors if they inherit from `DistributedActor`.
   if (auto protocol = dyn_cast<ProtocolDecl>(nominal)) {
     auto &ctx = protocol->getASTContext();
@@ -212,7 +211,7 @@ bool IsDistributedActorRequest::evaluate(
   // Class declarations are 'distributed actors' if they are declared with
   // 'distributed actor'
   auto classDecl = dyn_cast<ClassDecl>(nominal);
-  if(!classDecl)
+  if (!classDecl)
     return false;
 
   return classDecl->isExplicitDistributedActor();
@@ -220,10 +219,9 @@ bool IsDistributedActorRequest::evaluate(
 
 // ==== ------------------------------------------------------------------------
 
-static bool checkAdHocRequirementAccessControl(
-    NominalTypeDecl *decl,
-    ProtocolDecl *proto,
-    AbstractFunctionDecl *func) {
+static bool checkAdHocRequirementAccessControl(NominalTypeDecl *decl,
+                                               ProtocolDecl *proto,
+                                               AbstractFunctionDecl *func) {
   if (!func)
     return true;
 
@@ -236,17 +234,19 @@ static bool checkAdHocRequirementAccessControl(
                  func, /*isSetter=*/false,
                  /*requiredAccess=*/AccessLevel::Public, AccessLevel::Public,
                  proto);
-      return true;
+  return true;
 }
 
-static bool diagnoseMissingAdHocProtocolRequirement(ASTContext &C, Identifier identifier, NominalTypeDecl *decl) {
+static bool diagnoseMissingAdHocProtocolRequirement(ASTContext &C,
+                                                    Identifier identifier,
+                                                    NominalTypeDecl *decl) {
   assert(decl);
   auto FixitLocation = decl->getBraces().Start;
 
   // Prepare the indent (same as `printRequirementStub`)
   StringRef ExtraIndent;
-  StringRef CurrentIndent =
-      Lexer::getIndentationForLine(C.SourceMgr, decl->getStartLoc(), &ExtraIndent);
+  StringRef CurrentIndent = Lexer::getIndentationForLine(
+      C.SourceMgr, decl->getStartLoc(), &ExtraIndent);
 
   llvm::SmallString<128> Text;
   llvm::raw_svector_ostream OS(Text);
@@ -279,15 +279,21 @@ static bool diagnoseMissingAdHocProtocolRequirement(ASTContext &C, Identifier id
                "Act.ID == ActorID, "
                "Err: Error";
   } else if (identifier == C.Id_recordArgument) {
-    Printer << "mutating func recordArgument<Value: SerializationRequirement>(_ argument: RemoteCallArgument<Value>) throws";
+    Printer
+        << "mutating func recordArgument<Value: SerializationRequirement>(_ "
+           "argument: RemoteCallArgument<Value>) throws";
   } else if (identifier == C.Id_recordReturnType) {
-    Printer << "mutating func recordReturnType<Res: SerializationRequirement>(_ resultType: Res.Type) throws";
+    Printer << "mutating func recordReturnType<Res: "
+               "SerializationRequirement>(_ resultType: Res.Type) throws";
   } else if (identifier == C.Id_decodeNextArgument) {
-    Printer << "mutating func decodeNextArgument<Argument: SerializationRequirement>() throws -> Argument";
+    Printer << "mutating func decodeNextArgument<Argument: "
+               "SerializationRequirement>() throws -> Argument";
   } else if (identifier == C.Id_onReturn) {
-    Printer << "func onReturn<Success: SerializationRequirement>(value: Success) async throws";
+    Printer << "func onReturn<Success: SerializationRequirement>(value: "
+               "Success) async throws";
   } else {
-    llvm_unreachable("Unknown identifier for diagnosing ad-hoc missing requirement.");
+    llvm_unreachable(
+        "Unknown identifier for diagnosing ad-hoc missing requirement.");
   }
 
   /// Print the "{ <#code#> }" placeholder body
@@ -307,11 +313,8 @@ static bool diagnoseMissingAdHocProtocolRequirement(ASTContext &C, Identifier id
 }
 
 bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
-    ASTContext &C,
-    ProtocolDecl *Proto,
-    NormalProtocolConformance *Conformance,
-    Type Adoptee,
-    bool diagnose) {
+    ASTContext &C, ProtocolDecl *Proto, NormalProtocolConformance *Conformance,
+    Type Adoptee, bool diagnose) {
   auto decl = Adoptee->getAnyNominal();
   auto anyMissingAdHocRequirements = false;
 
@@ -322,7 +325,8 @@ bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
     auto remoteCallDecl =
         getRemoteCallOnDistributedActorSystem(decl, /*isVoidReturn=*/false);
     if (!remoteCallDecl && diagnose) {
-      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(C, C.Id_remoteCall, decl);
+      anyMissingAdHocRequirements =
+          diagnoseMissingAdHocProtocolRequirement(C, C.Id_remoteCall, decl);
     }
     if (checkAdHocRequirementAccessControl(decl, Proto, remoteCallDecl)) {
       anyMissingAdHocRequirements = true;
@@ -332,7 +336,8 @@ bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
     auto remoteCallVoidDecl =
         getRemoteCallOnDistributedActorSystem(decl, /*isVoidReturn=*/true);
     if (!remoteCallVoidDecl && diagnose) {
-      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(C, C.Id_remoteCallVoid, decl);
+      anyMissingAdHocRequirements =
+          diagnoseMissingAdHocProtocolRequirement(C, C.Id_remoteCallVoid, decl);
     }
     if (checkAdHocRequirementAccessControl(decl, Proto, remoteCallVoidDecl)) {
       anyMissingAdHocRequirements = true;
@@ -343,12 +348,14 @@ bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
 
   // ==== ----------------------------------------------------------------------
   // Check the ad-hoc requirements of 'DistributedTargetInvocationEncoder'
-  if (Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder)) {
+  if (Proto->isSpecificProtocol(
+          KnownProtocolKind::DistributedTargetInvocationEncoder)) {
     // - recordArgument
     auto recordArgumentDecl =
         getRecordArgumentOnDistributedInvocationEncoder(decl);
     if (!recordArgumentDecl) {
-      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(C, C.Id_recordArgument, decl);
+      anyMissingAdHocRequirements =
+          diagnoseMissingAdHocProtocolRequirement(C, C.Id_recordArgument, decl);
     }
     if (checkAdHocRequirementAccessControl(decl, Proto, recordArgumentDecl)) {
       anyMissingAdHocRequirements = true;
@@ -358,7 +365,8 @@ bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
     auto recordReturnTypeDecl =
         getRecordReturnTypeOnDistributedInvocationEncoder(decl);
     if (!recordReturnTypeDecl) {
-      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(C, C.Id_recordReturnType, decl);
+      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(
+          C, C.Id_recordReturnType, decl);
     }
     if (checkAdHocRequirementAccessControl(decl, Proto, recordReturnTypeDecl)) {
       anyMissingAdHocRequirements = true;
@@ -369,14 +377,17 @@ bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
 
   // ==== ----------------------------------------------------------------------
   // Check the ad-hoc requirements of 'DistributedTargetInvocationDecoder'
-  if (Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationDecoder)) {
+  if (Proto->isSpecificProtocol(
+          KnownProtocolKind::DistributedTargetInvocationDecoder)) {
     // - decodeNextArgument
     auto decodeNextArgumentDecl =
         getDecodeNextArgumentOnDistributedInvocationDecoder(decl);
     if (!decodeNextArgumentDecl) {
-      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(C, C.Id_decodeNextArgument, decl);
+      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(
+          C, C.Id_decodeNextArgument, decl);
     }
-    if (checkAdHocRequirementAccessControl(decl, Proto, decodeNextArgumentDecl)) {
+    if (checkAdHocRequirementAccessControl(decl, Proto,
+                                           decodeNextArgumentDecl)) {
       anyMissingAdHocRequirements = true;
     }
 
@@ -385,12 +396,14 @@ bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
 
   // === -----------------------------------------------------------------------
   // Check the ad-hoc requirements of 'DistributedTargetInvocationResultHandler'
-  if (Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationResultHandler)) {
+  if (Proto->isSpecificProtocol(
+          KnownProtocolKind::DistributedTargetInvocationResultHandler)) {
     // - onReturn
     auto onReturnDecl =
         getOnReturnOnDistributedTargetInvocationResultHandler(decl);
     if (!onReturnDecl) {
-      anyMissingAdHocRequirements = diagnoseMissingAdHocProtocolRequirement(C, C.Id_onReturn, decl);
+      anyMissingAdHocRequirements =
+          diagnoseMissingAdHocProtocolRequirement(C, C.Id_onReturn, decl);
     }
     if (checkAdHocRequirementAccessControl(decl, Proto, onReturnDecl)) {
       anyMissingAdHocRequirements = true;
@@ -404,10 +417,9 @@ bool swift::checkDistributedActorSystemAdHocProtocolRequirements(
   return false;
 }
 
-static bool checkDistributedTargetResultType(
-    ValueDecl *valueDecl,
-    Type serializationRequirement,
-    bool diagnose) {
+static bool checkDistributedTargetResultType(ValueDecl *valueDecl,
+                                             Type serializationRequirement,
+                                             bool diagnose) {
   auto &C = valueDecl->getASTContext();
 
   if (serializationRequirement->hasError())
@@ -437,20 +449,19 @@ static bool checkDistributedTargetResultType(
       checkDistributedSerializationRequirementIsExactlyCodable(
           C, serializationRequirement);
 
-  for (auto serializationReq: serializationRequirements) {
+  for (auto serializationReq : serializationRequirements) {
     auto conformance = checkConformance(resultType, serializationReq);
     if (conformance.isInvalid()) {
       if (diagnose) {
-        llvm::StringRef conformanceToSuggest = isCodableRequirement ?
-                                               "Codable" : // Codable is a typealias, easier to diagnose like that
-                                               serializationReq->getNameStr();
+        llvm::StringRef conformanceToSuggest =
+            isCodableRequirement
+                ? "Codable"
+                : // Codable is a typealias, easier to diagnose like that
+                serializationReq->getNameStr();
 
         auto diag = valueDecl->diagnose(
-            diag::distributed_actor_target_result_not_codable,
-            resultType,
-            valueDecl,
-            conformanceToSuggest
-        );
+            diag::distributed_actor_target_result_not_codable, resultType,
+            valueDecl, conformanceToSuggest);
 
         if (isCodableRequirement) {
           if (auto resultNominalType = resultType->getAnyNominal()) {
@@ -475,10 +486,11 @@ bool swift::checkDistributedActorSystem(const NominalTypeDecl *system) {
     return true;
 
   // === AssociatedTypes
-  // --- SerializationRequirement MUST be a protocol TODO(distributed): rdar://91663941
-  // we may lift this in the future and allow classes but this requires more
-  // work to enable associatedtypes to be constrained to class or protocol,
-  // which then will unlock using them as generic constraints in protocols.
+  // --- SerializationRequirement MUST be a protocol TODO(distributed):
+  // rdar://91663941 we may lift this in the future and allow classes but this
+  // requires more work to enable associatedtypes to be constrained to class or
+  // protocol, which then will unlock using them as generic constraints in
+  // protocols.
   Type requirementTy = getDistributedActorSystemSerializationType(nominal);
 
   if (auto existentialTy = requirementTy->getAs<ExistentialType>()) {
@@ -493,8 +505,9 @@ bool swift::checkDistributedActorSystem(const NominalTypeDecl *system) {
     } else if (isa<ProtocolType>(concreteReqTy)) {
       // ok, protocols is exactly what we want to be used as constraints here
     } else {
-      nominal->diagnose(diag::distributed_actor_system_serialization_req_must_be_protocol,
-                        requirementTy);
+      nominal->diagnose(
+          diag::distributed_actor_system_serialization_req_must_be_protocol,
+          requirementTy);
       return true;
     }
   }
@@ -516,8 +529,7 @@ bool swift::checkDistributedFunction(AbstractFunctionDecl *func) {
     return true;
 
   auto &C = func->getASTContext();
-  return evaluateOrDefault(C.evaluator,
-                           CheckDistributedFunctionRequest{func},
+  return evaluateOrDefault(C.evaluator, CheckDistributedFunctionRequest{func},
                            false); // no error if cycle
 }
 
@@ -542,7 +554,7 @@ bool CheckDistributedFunctionRequest::evaluate(
   Type serializationReqType =
       getDistributedActorSerializationType(func->getDeclContext());
 
-  for (auto param: *func->getParameters()) {
+  for (auto param : *func->getParameters()) {
     // --- Check the parameter conforming to serialization requirements
     if (!serializationReqType->hasError()) {
       // If the requirement is exactly `Codable` we diagnose it ia bit nicer.
@@ -554,7 +566,7 @@ bool CheckDistributedFunctionRequest::evaluate(
       auto paramTy = func->mapTypeIntoEnvironment(param->getInterfaceType());
 
       auto srl = serializationReqType->getExistentialLayout();
-      for (auto req: srl.getProtocols()) {
+      for (auto req : srl.getProtocols()) {
         if (checkConformance(paramTy, req).isInvalid()) {
           auto diag = func->diagnose(
               diag::distributed_actor_func_param_not_codable,
@@ -573,13 +585,14 @@ bool CheckDistributedFunctionRequest::evaluate(
 
     // --- Check parameters for various illegal modifiers
     if (param->isInOut()) {
-      param->diagnose(
-          diag::distributed_actor_func_inout,
-          param->getName(),
-          func
-      ).fixItRemove(SourceRange(param->getTypeSourceRangeForDiagnostics().Start,
-                                param->getTypeSourceRangeForDiagnostics().Start.getAdvancedLoc(1)));
-      // FIXME(distributed): the fixIt should be on param->getSpecifierLoc(), but that Loc is invalid for some reason?
+      param
+          ->diagnose(diag::distributed_actor_func_inout, param->getName(), func)
+          .fixItRemove(SourceRange(
+              param->getTypeSourceRangeForDiagnostics().Start,
+              param->getTypeSourceRangeForDiagnostics().Start.getAdvancedLoc(
+                  1)));
+      // FIXME(distributed): the fixIt should be on param->getSpecifierLoc(),
+      // but that Loc is invalid for some reason?
       return true;
     }
 
@@ -587,24 +600,20 @@ bool CheckDistributedFunctionRequest::evaluate(
         param->getSpecifier() == ParamSpecifier::LegacyOwned ||
         param->getSpecifier() == ParamSpecifier::Consuming ||
         param->getSpecifier() == ParamSpecifier::Borrowing) {
-      param->diagnose(
-          diag::distributed_actor_func_unsupported_specifier,
-          ParamDecl::getSpecifierSpelling(param->getSpecifier()),
-          param->getName(),
-          func);
+      param->diagnose(diag::distributed_actor_func_unsupported_specifier,
+                      ParamDecl::getSpecifierSpelling(param->getSpecifier()),
+                      param->getName(), func);
       return true;
     }
 
     if (param->isVariadic()) {
-      param->diagnose(
-          diag::distributed_actor_func_variadic,
-          param->getName(),
-          func
-      );
+      param->diagnose(diag::distributed_actor_func_variadic, param->getName(),
+                      func);
     }
   }
 
-  // --- Result type must be either void or a serialization requirement conforming type
+  // --- Result type must be either void or a serialization requirement
+  // conforming type
   if (checkDistributedTargetResultType(func, serializationReqType,
                                        /*diagnose=*/true)) {
     return true;
@@ -651,7 +660,8 @@ bool swift::checkDistributedActorProperty(VarDecl *var, bool diagnose) {
   auto serializationRequirement =
       getDistributedActorSerializationType(var->getDeclContext());
 
-  if (checkDistributedTargetResultType(var, serializationRequirement, diagnose)) {
+  if (checkDistributedTargetResultType(var, serializationRequirement,
+                                       diagnose)) {
     return true;
   }
 
@@ -660,7 +670,8 @@ bool swift::checkDistributedActorProperty(VarDecl *var, bool diagnose) {
 
 // ==== ------------------------------------------------------------------------
 
-void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal) {
+void TypeChecker::checkDistributedActor(SourceFile *SF,
+                                        NominalTypeDecl *nominal) {
   if (!nominal || !nominal->isDistributedActor())
     return;
 
@@ -670,10 +681,11 @@ void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal
     return;
 
   if (nominal->getFormalAccess() == AccessLevel::Open) {
-    // we should have outright banned 'open' for all actors, but seems we didn't.
-    // distributed actor synthesis always previously crashed if someone were to
-    // declare one as open, so we're banning it now, rather than leave it crashing.
-    (void) nominal->diagnose(diag::access_control_open_bad_decl);
+    // we should have outright banned 'open' for all actors, but seems we
+    // didn't. distributed actor synthesis always previously crashed if someone
+    // were to declare one as open, so we're banning it now, rather than leave
+    // it crashing.
+    (void)nominal->diagnose(diag::access_control_open_bad_decl);
   }
 
   auto &C = nominal->getASTContext();
@@ -729,10 +741,8 @@ bool TypeChecker::checkDistributedFunc(FuncDecl *func) {
   return swift::checkDistributedFunction(func);
 }
 
-ConstructorDecl*
-GetDistributedRemoteCallTargetInitFunctionRequest::evaluate(
-    Evaluator &evaluator,
-    NominalTypeDecl *nominal) const {
+ConstructorDecl *GetDistributedRemoteCallTargetInitFunctionRequest::evaluate(
+    Evaluator &evaluator, NominalTypeDecl *nominal) const {
   auto &C = nominal->getASTContext();
 
   // not via `ensureDistributedModuleLoaded` to avoid generating a warning,
@@ -763,10 +773,8 @@ GetDistributedRemoteCallTargetInitFunctionRequest::evaluate(
   return nullptr;
 }
 
-ConstructorDecl*
-GetDistributedRemoteCallArgumentInitFunctionRequest::evaluate(
-    Evaluator &evaluator,
-    NominalTypeDecl *nominal) const {
+ConstructorDecl *GetDistributedRemoteCallArgumentInitFunctionRequest::evaluate(
+    Evaluator &evaluator, NominalTypeDecl *nominal) const {
   auto &C = nominal->getASTContext();
 
   // not via `ensureDistributedModuleLoaded` to avoid generating a warning,
@@ -805,17 +813,15 @@ GetDistributedRemoteCallArgumentInitFunctionRequest::evaluate(
   return nullptr;
 }
 
-NominalTypeDecl *
-GetDistributedActorInvocationDecoderRequest::evaluate(Evaluator &evaluator,
-                                                      NominalTypeDecl *actor) const {
+NominalTypeDecl *GetDistributedActorInvocationDecoderRequest::evaluate(
+    Evaluator &evaluator, NominalTypeDecl *actor) const {
   auto &ctx = actor->getASTContext();
   auto decoderTy = getAssociatedTypeOfDistributedSystemOfActor(
       actor, ctx.Id_InvocationDecoder);
   return decoderTy->getAnyNominal();
 }
 
-FuncDecl *
-GetDistributedActorConcreteArgumentDecodingMethodRequest::evaluate(
+FuncDecl *GetDistributedActorConcreteArgumentDecodingMethodRequest::evaluate(
     Evaluator &evaluator, NominalTypeDecl *decl) const {
   auto &ctx = decl->getASTContext();
 
@@ -870,7 +876,8 @@ GetDistributedActorConcreteArgumentDecodingMethodRequest::evaluate(
       if (!FD->getResultInterfaceType()->isEqual(paramTy))
         continue;
 
-      // Let's find out how many serialization requirements does this method cover e.g. `Codable` is two requirements - `Encodable` and `Decodable`.
+      // Let's find out how many serialization requirements does this method
+      // cover e.g. `Codable` is two requirements - `Encodable` and `Decodable`.
       auto nextArgumentSig = FD->getGenericSignature();
       bool okay =
           llvm::all_of(serializationRequirements, [&](ProtocolDecl *p) -> bool {

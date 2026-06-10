@@ -30,6 +30,7 @@
 #include "swift/AST/Expr.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/Initializer.h"
+#include "swift/AST/LookupKinds.h"
 #include "swift/AST/ParameterList.h"
 #include "swift/AST/PrettyStackTrace.h"
 #include "swift/AST/ProtocolConformance.h"
@@ -156,9 +157,8 @@ static void maybeAddMemberwiseDefaultArg(ParamDecl *arg, VarDecl *var,
 
   // Whether we can default-initialize this property.
   auto binding = var->getParentPatternBinding();
-  bool isDefaultInitializable =
-      var->getAttrs().hasAttribute<LazyAttr>() ||
-      (binding && binding->isDefaultInitializable());
+  bool isDefaultInitializable = var->getAttrs().hasAttribute<LazyAttr>() ||
+                                (binding && binding->isDefaultInitializable());
 
   // If this is neither explicitly initialized nor
   // default-initializable, don't add anything.
@@ -172,11 +172,11 @@ static void maybeAddMemberwiseDefaultArg(ParamDecl *arg, VarDecl *var,
   // the type will always be a sugared T? because we don't default init an
   // explicit Optional<T>.
   bool isNilInitialized =
-    var->getAttrs().hasAttribute<LazyAttr>() ||
-    (!isExplicitlyInitialized && isDefaultInitializable &&
-     var->getValueInterfaceType()->isOptional() &&
-     (var->getAttachedPropertyWrappers().empty() ||
-      var->isPropertyMemberwiseInitializedWithWrappedType()));
+      var->getAttrs().hasAttribute<LazyAttr>() ||
+      (!isExplicitlyInitialized && isDefaultInitializable &&
+       var->getValueInterfaceType()->isOptional() &&
+       (var->getAttachedPropertyWrappers().empty() ||
+        var->isPropertyMemberwiseInitializedWithWrappedType()));
   if (isNilInitialized) {
     arg->setDefaultArgumentKind(DefaultArgumentKind::NilLiteral);
     return;
@@ -296,7 +296,7 @@ createImplicitConstructor(NominalTypeDecl *decl, ImplicitConstructorKind ICK,
   auto accessLevel = AccessLevel::Internal;
 
   // Determine the parameter type of the implicit constructor.
-  SmallVector<ParamDecl*, 8> params;
+  SmallVector<ParamDecl *, 8> params;
   SmallVector<DefaultArgumentInitializer *, 8> defaultInits;
   if (ICK == ImplicitConstructorKind::Memberwise) {
     assert(isa<StructDecl>(decl) && "Only struct have memberwise constructor");
@@ -308,7 +308,8 @@ createImplicitConstructor(NominalTypeDecl *decl, ImplicitConstructorKind ICK,
   } else if (ICK == ImplicitConstructorKind::DefaultDistributedActor) {
     auto classDecl = dyn_cast<ClassDecl>(decl);
     assert(classDecl && decl->isDistributedActor() &&
-           "Only 'distributed actor' type can gain implicit distributed actor init");
+           "Only 'distributed actor' type can gain implicit distributed actor "
+           "init");
 
     /// Add 'system' parameter to default init of distributed actors.
     if (swift::ensureDistributedModuleLoaded(decl)) {
@@ -328,7 +329,7 @@ createImplicitConstructor(NominalTypeDecl *decl, ImplicitConstructorKind ICK,
   }
 
   auto paramList = ParameterList::create(ctx, params);
-  
+
   // Create the constructor.
   DeclName name(ctx, DeclBaseName::createConstructor(), paramList);
   auto *ctor = new (ctx) ConstructorDecl(
@@ -410,8 +411,7 @@ createImplicitConstructor(NominalTypeDecl *decl, ImplicitConstructorKind ICK,
 
         auto isolation = getActorIsolation(var);
         if (isolation.isGlobalActor()) {
-          if (!type->isSendableType() ||
-              initIsolation.isGlobalActor()) {
+          if (!type->isSendableType() || initIsolation.isGlobalActor()) {
             // If different isolated stored properties require different
             // global actors, it is impossible to initialize this type.
             if (existingIsolation != isolation) {
@@ -441,8 +441,7 @@ createImplicitConstructor(NominalTypeDecl *decl, ImplicitConstructorKind ICK,
       return addNonisolated;
     };
 
-    if (shouldAddNonisolated(stored) &&
-        shouldAddNonisolated(initAccessor)) {
+    if (shouldAddNonisolated(stored) && shouldAddNonisolated(initAccessor)) {
       addNonIsolatedToSynthesized(decl, ctor);
     }
   }
@@ -467,8 +466,8 @@ createImplicitConstructor(NominalTypeDecl *decl, ImplicitConstructorKind ICK,
 }
 
 /// Create a stub body that emits a fatal error message.
-static std::pair<BraceStmt *, bool>
-synthesizeStubBody(AbstractFunctionDecl *fn, void *) {
+static std::pair<BraceStmt *, bool> synthesizeStubBody(AbstractFunctionDecl *fn,
+                                                       void *) {
   auto *ctor = cast<ConstructorDecl>(fn);
   auto &ctx = ctor->getASTContext();
 
@@ -477,7 +476,7 @@ synthesizeStubBody(AbstractFunctionDecl *fn, void *) {
   if (!unimplementedInitDecl) {
     ctx.Diags.diagnose(classDecl->getLoc(),
                        diag::missing_unimplemented_init_runtime);
-    return { nullptr, true };
+    return {nullptr, true};
   }
 
   auto *staticStringDecl = ctx.getStaticStringDecl();
@@ -490,17 +489,16 @@ synthesizeStubBody(AbstractFunctionDecl *fn, void *) {
 
   // Create a call to Swift._unimplementedInitializer
   auto loc = classDecl->getLoc();
-  Expr *ref = new (ctx) DeclRefExpr(unimplementedInitDecl,
-                                   DeclNameLoc(loc),
-                                   /*Implicit=*/true);
-  ref->setType(unimplementedInitDecl->getInterfaceType()
-                                    ->removeArgumentLabels(1));
+  Expr *ref = new (ctx) DeclRefExpr(unimplementedInitDecl, DeclNameLoc(loc),
+                                    /*Implicit=*/true);
+  ref->setType(
+      unimplementedInitDecl->getInterfaceType()->removeArgumentLabels(1));
 
   llvm::SmallString<64> buffer;
-  StringRef fullClassName = ctx.AllocateCopy(
-                              (classDecl->getModuleContext()->getName().str() +
-                               "." +
-                               classDecl->getName().str()).toStringRef(buffer));
+  StringRef fullClassName =
+      ctx.AllocateCopy((classDecl->getModuleContext()->getName().str() + "." +
+                        classDecl->getName().str())
+                           .toStringRef(buffer));
 
   auto *className = new (ctx) StringLiteralExpr(fullClassName, loc,
                                                 /*Implicit=*/true);
@@ -509,22 +507,22 @@ synthesizeStubBody(AbstractFunctionDecl *fn, void *) {
   className->setType(staticStringType);
 
   auto *initName = new (ctx) MagicIdentifierLiteralExpr(
-    MagicIdentifierLiteralExpr::Function, loc, /*Implicit=*/true);
+      MagicIdentifierLiteralExpr::Function, loc, /*Implicit=*/true);
   initName->setType(staticStringType);
   initName->setBuiltinInitializer(staticStringInit);
 
   auto *file = new (ctx) MagicIdentifierLiteralExpr(
-    MagicIdentifierLiteralExpr::FileID, loc, /*Implicit=*/true);
+      MagicIdentifierLiteralExpr::FileID, loc, /*Implicit=*/true);
   file->setType(staticStringType);
   file->setBuiltinInitializer(staticStringInit);
 
   auto *line = new (ctx) MagicIdentifierLiteralExpr(
-    MagicIdentifierLiteralExpr::Line, loc, /*Implicit=*/true);
+      MagicIdentifierLiteralExpr::Line, loc, /*Implicit=*/true);
   line->setType(uintType);
   line->setBuiltinInitializer(uintInit);
 
   auto *column = new (ctx) MagicIdentifierLiteralExpr(
-    MagicIdentifierLiteralExpr::Column, loc, /*Implicit=*/true);
+      MagicIdentifierLiteralExpr::Column, loc, /*Implicit=*/true);
   column->setType(uintType);
   column->setBuiltinInitializer(uintInit);
 
@@ -537,17 +535,16 @@ synthesizeStubBody(AbstractFunctionDecl *fn, void *) {
   SmallVector<ASTNode, 2> stmts;
   stmts.push_back(call);
   stmts.push_back(ReturnStmt::createImplicit(ctx, /*Result=*/nullptr));
-  return { BraceStmt::create(ctx, SourceLoc(), stmts, SourceLoc(),
-                             /*implicit=*/true),
-           /*isTypeChecked=*/true };
+  return {BraceStmt::create(ctx, SourceLoc(), stmts, SourceLoc(),
+                            /*implicit=*/true),
+          /*isTypeChecked=*/true};
 }
 
 /// Clone the base class initializer's generic parameter list, but change the
 /// depth of the generic parameters to be one greater than the depth of the
 /// subclass.
 static GenericParamList *
-createDesignatedInitOverrideGenericParams(ASTContext &ctx,
-                                          ClassDecl *classDecl,
+createDesignatedInitOverrideGenericParams(ASTContext &ctx, ClassDecl *classDecl,
                                           ConstructorDecl *superclassCtor) {
   auto *genericParams = superclassCtor->getGenericParams();
 
@@ -567,8 +564,7 @@ createDesignatedInitOverrideGenericParams(ASTContext &ctx,
     newParams.push_back(newParam);
   }
 
-  return GenericParamList::create(ctx, SourceLoc(),
-                                  newParams, SourceLoc(),
+  return GenericParamList::create(ctx, SourceLoc(), newParams, SourceLoc(),
                                   ArrayRef<RequirementRepr>(), SourceLoc());
 }
 
@@ -583,14 +579,12 @@ static bool hasClangImplementation(const NominalTypeDecl *decl) {
 /// extension (if one is present).
 static bool isInMainBody(ValueDecl *member, NominalTypeDecl *ty) {
   return member->getDeclContext() ==
-              ty->getImplementationContext()->getAsGenericContext();
+         ty->getImplementationContext()->getAsGenericContext();
 }
 
-static void
-configureInheritedDesignatedInitAttributes(ClassDecl *classDecl,
-                                           ConstructorDecl *ctor,
-                                           ConstructorDecl *superclassCtor,
-                                           ASTContext &ctx) {
+static void configureInheritedDesignatedInitAttributes(
+    ClassDecl *classDecl, ConstructorDecl *ctor,
+    ConstructorDecl *superclassCtor, ASTContext &ctx) {
   assert(isInMainBody(ctor, classDecl));
 
   AccessLevel access = classDecl->getFormalAccess();
@@ -600,7 +594,7 @@ configureInheritedDesignatedInitAttributes(ClassDecl *classDecl,
   ctor->setAccess(access);
 
   AccessScope superclassInliningAccessScope =
-      superclassCtor->getFormalAccessScope(/*useDC*/nullptr,
+      superclassCtor->getFormalAccessScope(/*useDC*/ nullptr,
                                            /*usableFromInlineAsPublic=*/true);
 
   if (superclassInliningAccessScope.isPublic()) {
@@ -609,14 +603,16 @@ configureInheritedDesignatedInitAttributes(ClassDecl *classDecl,
       auto *clonedAttr = new (ctx) InlinableAttr(/*implicit=*/true);
       ctor->addAttribute(clonedAttr);
     } else if (superclassCtor->getAttrs().hasAttribute<InlineAttr>() &&
-               superclassCtor->getAttrs().getAttribute<InlineAttr>()->getKind()
-               == InlineKind::Always) {
+               superclassCtor->getAttrs()
+                       .getAttribute<InlineAttr>()
+                       ->getKind() == InlineKind::Always) {
       // Inherit the @inline(always) attribute.
-      auto *clonedAttr = new (ctx) InlineAttr(SourceLoc(), SourceRange(),
-                                              InlineKind::Always,
-                                              /*implicit=*/true);
+      auto *clonedAttr =
+          new (ctx) InlineAttr(SourceLoc(), SourceRange(), InlineKind::Always,
+                               /*implicit=*/true);
       ctor->addAttribute(clonedAttr);
-    } else if (access == AccessLevel::Internal && !superclassCtor->isDynamic()){
+    } else if (access == AccessLevel::Internal &&
+               !superclassCtor->isDynamic()) {
       // Inherit the @usableFromInline attribute.
       auto *clonedAttr = new (ctx) UsableFromInlineAttr(/*implicit=*/true);
       ctor->addAttribute(clonedAttr);
@@ -640,10 +636,10 @@ configureInheritedDesignatedInitAttributes(ClassDecl *classDecl,
   if (superclassCtor->getAttrs().hasAttribute<AvailableAttr>()) {
     SmallVector<const Decl *, 2> asAvailableAs;
 
-    // We don't have to look at enclosing contexts of the superclass constructor,
-    // because designated initializers must always be defined in the superclass
-    // body, and we already enforce that a superclass is at least as available as
-    // a subclass.
+    // We don't have to look at enclosing contexts of the superclass
+    // constructor, because designated initializers must always be defined in
+    // the superclass body, and we already enforce that a superclass is at least
+    // as available as a subclass.
     asAvailableAs.push_back(superclassCtor);
     if (auto *parentDecl = classDecl->getInnermostDeclWithAvailability()) {
       asAvailableAs.push_back(parentDecl);
@@ -674,7 +670,7 @@ synthesizeDesignatedInitOverride(AbstractFunctionDecl *fn, void *context) {
   auto *ctor = cast<ConstructorDecl>(fn);
   auto &ctx = ctor->getASTContext();
 
-  auto *superclassCtor = (ConstructorDecl *) context;
+  auto *superclassCtor = (ConstructorDecl *)context;
 
   // Reference to super.init.
   auto *selfDecl = ctor->getImplicitSelfDecl();
@@ -684,16 +680,15 @@ synthesizeDesignatedInitOverride(AbstractFunctionDecl *fn, void *context) {
   SubstitutionMap subs;
   if (auto *genericEnv = fn->getGenericEnvironment())
     subs = genericEnv->getForwardingSubstitutionMap();
-  subs = SubstitutionMap::getOverrideSubstitutions(superclassCtor, fn)
-      .subst(subs);
+  subs =
+      SubstitutionMap::getOverrideSubstitutions(superclassCtor, fn).subst(subs);
   ConcreteDeclRef ctorRef(superclassCtor, subs);
 
   auto type = superclassCtor->getInitializerInterfaceType();
   if (auto *genericFnType = type->getAs<GenericFunctionType>())
     type = genericFnType->substGenericArgs(subs);
-  auto *ctorRefExpr =
-      new (ctx) OtherConstructorDeclRefExpr(ctorRef, DeclNameLoc(),
-                                            IsImplicit, type);
+  auto *ctorRefExpr = new (ctx)
+      OtherConstructorDeclRefExpr(ctorRef, DeclNameLoc(), IsImplicit, type);
 
   if (auto *funcTy = type->getAs<FunctionType>())
     type = funcTy->getResult();
@@ -726,15 +721,14 @@ synthesizeDesignatedInitOverride(AbstractFunctionDecl *fn, void *context) {
     expr = new (ctx) TryExpr(SourceLoc(), expr, type, /*implicit=*/true);
   }
 
-  auto *rebindSelfExpr =
-    new (ctx) RebindSelfInConstructorExpr(expr, selfDecl);
+  auto *rebindSelfExpr = new (ctx) RebindSelfInConstructorExpr(expr, selfDecl);
 
   SmallVector<ASTNode, 2> stmts;
   stmts.push_back(rebindSelfExpr);
   stmts.push_back(ReturnStmt::createImplicit(ctx, /*Result=*/nullptr));
-  return { BraceStmt::create(ctx, SourceLoc(), stmts, SourceLoc(),
+  return {BraceStmt::create(ctx, SourceLoc(), stmts, SourceLoc(),
                             /*implicit=*/true),
-           /*isTypeChecked=*/true };
+          /*isTypeChecked=*/true};
 }
 
 /// The kind of designated initializer to synthesize.
@@ -764,8 +758,7 @@ enum class DesignatedInitKind {
 static ConstructorDecl *
 createDesignatedInitOverride(ClassDecl *classDecl,
                              ConstructorDecl *superclassCtor,
-                             DesignatedInitKind kind,
-                             ASTContext &ctx) {
+                             DesignatedInitKind kind, ASTContext &ctx) {
   // Lookup will sometimes give us initializers that are from the ancestors of
   // our immediate superclass.  So, from the superclass constructor, we look
   // one level up to the enclosing type context which will either be a class
@@ -778,8 +771,8 @@ createDesignatedInitOverride(ClassDecl *classDecl,
   if (classDecl->getSuperclassDecl() != superclassDecl)
     return nullptr;
 
-  auto *genericParams = createDesignatedInitOverrideGenericParams(
-      ctx, classDecl, superclassCtor);
+  auto *genericParams =
+      createDesignatedInitOverrideGenericParams(ctx, classDecl, superclassCtor);
 
   auto superclassCtorSig = superclassCtor->getGenericSignature();
 
@@ -801,10 +794,10 @@ createDesignatedInitOverride(ClassDecl *classDecl,
     // satisfied by the derived class. In this case, we don't want to inherit
     // this initializer; there's no way to call it on the derived class.
     auto checkResult = checkRequirements(
-        superclassCtorSig.getRequirements(),
-        [&](Type type) -> Type {
+        superclassCtorSig.getRequirements(), [&](Type type) -> Type {
           auto substType = type.subst(subMap);
-          return GenericEnvironment::mapTypeIntoEnvironment(genericEnv, substType);
+          return GenericEnvironment::mapTypeIntoEnvironment(genericEnv,
+                                                            substType);
         });
     if (checkResult != CheckRequirementsResult::Success)
       return nullptr;
@@ -812,9 +805,8 @@ createDesignatedInitOverride(ClassDecl *classDecl,
 
   // Create the initializer parameter list by cloning the superclass initializer
   // parameter list and applying the substitution map.
-  OptionSet<ParameterList::CloneFlags> options
-    = (ParameterList::Implicit |
-       ParameterList::Inherited |
+  OptionSet<ParameterList::CloneFlags> options =
+      (ParameterList::Implicit | ParameterList::Inherited |
        ParameterList::NamedArguments);
   auto *superclassParams = superclassCtor->getParameters();
   auto *bodyParams = superclassParams->clone(ctx, options);
@@ -858,10 +850,10 @@ createDesignatedInitOverride(ClassDecl *classDecl,
   ctor->setGenericSignature(genericSig);
 
   ctor->setImplicitlyUnwrappedOptional(
-    superclassCtor->isImplicitlyUnwrappedOptional());
+      superclassCtor->isImplicitlyUnwrappedOptional());
 
-  configureInheritedDesignatedInitAttributes(classDecl, ctor,
-                                             superclassCtor, ctx);
+  configureInheritedDesignatedInitAttributes(classDecl, ctor, superclassCtor,
+                                             ctx);
 
   if (kind == DesignatedInitKind::Stub) {
     // Make this a stub implementation.
@@ -881,11 +873,10 @@ createDesignatedInitOverride(ClassDecl *classDecl,
 }
 
 /// Diagnose a missing required initializer.
-static void diagnoseMissingRequiredInitializer(
-              ClassDecl *classDecl,
-              ConstructorDecl *superInitializer,
-              bool downgradeToWarning,
-              ASTContext &ctx) {
+static void
+diagnoseMissingRequiredInitializer(ClassDecl *classDecl,
+                                   ConstructorDecl *superInitializer,
+                                   bool downgradeToWarning, ASTContext &ctx) {
   // Find the location at which we should insert the new initializer.
   SourceLoc insertionLoc;
   SourceLoc indentationLoc;
@@ -918,8 +909,7 @@ static void diagnoseMissingRequiredInitializer(
 
   // Adjust the insertion location to point at the end of this line (i.e.,
   // the start of the next line).
-  insertionLoc = Lexer::getLocForEndOfLine(ctx.SourceMgr,
-                                           insertionLoc);
+  insertionLoc = Lexer::getLocForEndOfLine(ctx.SourceMgr, insertionLoc);
 
   // Find the indentation used on the indentation line.
   StringRef extraIndentation;
@@ -943,9 +933,9 @@ static void diagnoseMissingRequiredInitializer(
 
       // If there is no explicit 'required', print one.
       bool hasExplicitRequiredAttr = false;
-      if (auto requiredAttr
-            = superInitializer->getAttrs().getAttribute<RequiredAttr>())
-          hasExplicitRequiredAttr = !requiredAttr->isImplicit();
+      if (auto requiredAttr =
+              superInitializer->getAttrs().getAttribute<RequiredAttr>())
+        hasExplicitRequiredAttr = !requiredAttr->isImplicit();
 
       if (!hasExplicitRequiredAttr)
         printer << "required ";
@@ -1098,9 +1088,8 @@ static bool areAllStoredPropertiesDefaultInitializable(Evaluator &eval,
       eval, AreAllStoredPropertiesDefaultInitableRequest{decl}, false);
 }
 
-bool
-HasUserDefinedDesignatedInitRequest::evaluate(Evaluator &evaluator,
-                                              NominalTypeDecl *decl) const {
+bool HasUserDefinedDesignatedInitRequest::evaluate(
+    Evaluator &evaluator, NominalTypeDecl *decl) const {
   assert(!hasClangImplementation(decl));
 
   auto results = decl->lookupDirect(DeclBaseName::createConstructor());
@@ -1179,15 +1168,14 @@ static void collectNonOveriddenSuperclassInits(
   }
 
   superclassDecl->synthesizeSemanticMembersIfNeeded(
-    DeclBaseName::createConstructor());
+      DeclBaseName::createConstructor());
 
   NLOptions subOptions =
-      (NL_QualifiedDefault | NL_IgnoreAccessControl | NL_IgnoreMissingImports);
+      (NLOptions::QualifiedDefault | NLOptions::IgnoreAccessControl |
+       NLOptions::IgnoreMissingImports);
   SmallVector<ValueDecl *, 4> lookupResults;
-  subclass->lookupQualified(
-      superclassDecl, DeclNameRef::createConstructor(),
-      subclass->getStartLoc(),
-      subOptions, lookupResults);
+  subclass->lookupQualified(superclassDecl, DeclNameRef::createConstructor(),
+                            subclass->getStartLoc(), subOptions, lookupResults);
 
   for (auto decl : lookupResults) {
     // HACK: If an @objcImplementation extension declares an initializer, its
@@ -1274,8 +1262,8 @@ static void addImplicitInheritedConstructorsToClass(ClassDecl *decl) {
 
     // Diagnose a missing override of a required initializer.
     if (superclassCtor->isRequired() && !inheritDesignatedInits) {
-      diagnoseMissingRequiredInitializer(
-          decl, superclassCtor, downgradeRequiredInitsToWarning, ctx);
+      diagnoseMissingRequiredInitializer(decl, superclassCtor,
+                                         downgradeRequiredInitsToWarning, ctx);
       continue;
     }
 
@@ -1316,16 +1304,15 @@ static void addImplicitInheritedConstructorsToClass(ClassDecl *decl) {
     auto kind = inheritDesignatedInits ? DesignatedInitKind::Chaining
                                        : DesignatedInitKind::Stub;
 
-    if (auto ctor = createDesignatedInitOverride(
-                      decl, superclassCtor, kind, ctx)) {
+    if (auto ctor =
+            createDesignatedInitOverride(decl, superclassCtor, kind, ctx)) {
       decl->getImplementationContext()->addMember(ctor);
     }
   }
 }
 
-bool
-InheritsSuperclassInitializersRequest::evaluate(Evaluator &eval,
-                                                ClassDecl *decl) const {
+bool InheritsSuperclassInitializersRequest::evaluate(Evaluator &eval,
+                                                     ClassDecl *decl) const {
   // Check if we parsed the @_inheritsConvenienceInitializers attribute.
   if (decl->getAttrs().hasAttribute<InheritsConvenienceInitializersAttr>())
     return true;
@@ -1420,13 +1407,13 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     if (auto *conformance = dyn_cast<NormalProtocolConformance>(
             ref.getConcrete()->getRootConformance())) {
       // Complete evaluate the conformance.
-      evaluateOrDefault(evaluator,
-                        ResolveTypeWitnessesRequest{conformance},
+      evaluateOrDefault(evaluator, ResolveTypeWitnessesRequest{conformance},
                         evaluator::SideEffect());
 
       // FIXME: This should be more fine-grained to avoid having to check
       // for a cycle here.
-      if (!evaluator.hasActiveRequest(ResolveValueWitnessesRequest{conformance})) {
+      if (!evaluator.hasActiveRequest(
+              ResolveValueWitnessesRequest{conformance})) {
         conformance->resolveValueWitnesses();
       }
     }
@@ -1455,8 +1442,7 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     if (!evaluateTargetConformanceTo(decodableProto)) {
       (void)evaluateTargetConformanceTo(encodableProto);
     }
-  }
-    break;
+  } break;
   case ImplicitMemberAction::ResolveEncodable: {
     // encode(to:) may be synthesized as part of derived conformance to the
     // Encodable protocol.
@@ -1464,8 +1450,7 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     // conformance here to attempt synthesis.
     auto *encodableProto = Context.getProtocol(KnownProtocolKind::Encodable);
     (void)evaluateTargetConformanceTo(encodableProto);
-  }
-    break;
+  } break;
   case ImplicitMemberAction::ResolveDecodable: {
     // init(from:) may be synthesized as part of derived conformance to the
     // Decodable protocol.
@@ -1713,9 +1698,8 @@ ResolveEffectiveMemberwiseInitRequest::evaluate(Evaluator &evaluator,
   return memberwiseInitDecl;
 }
 
-bool
-HasDefaultInitRequest::evaluate(Evaluator &evaluator,
-                                NominalTypeDecl *decl) const {
+bool HasDefaultInitRequest::evaluate(Evaluator &evaluator,
+                                     NominalTypeDecl *decl) const {
   assert(isa<StructDecl>(decl) || isa<ClassDecl>(decl));
 
   if (!shouldAttemptInitializerSynthesis(decl))
@@ -1756,8 +1740,8 @@ synthesizeSingleReturnFunctionBody(AbstractFunctionDecl *afd, void *) {
   SmallVector<ASTNode, 1> stmts;
   stmts.push_back(
       ReturnStmt::createImplicit(ctx, afd->getLoc(), /*result*/ nullptr));
-  return { BraceStmt::create(ctx, afd->getLoc(), stmts, afd->getLoc(), true),
-           /*isTypeChecked=*/true };
+  return {BraceStmt::create(ctx, afd->getLoc(), stmts, afd->getLoc(), true),
+          /*isTypeChecked=*/true};
 }
 
 ConstructorDecl *
@@ -1766,9 +1750,9 @@ SynthesizeDefaultInitRequest::evaluate(Evaluator &evaluator,
   auto &ctx = decl->getASTContext();
 
   // Create the default constructor.
-  auto ctorKind = decl->isDistributedActor() ?
-      ImplicitConstructorKind::DefaultDistributedActor :
-      ImplicitConstructorKind::Default;
+  auto ctorKind = decl->isDistributedActor()
+                      ? ImplicitConstructorKind::DefaultDistributedActor
+                      : ImplicitConstructorKind::Default;
   if (auto ctor = createImplicitConstructor(
           decl, ctorKind, /*memberwiseKind*/ std::nullopt, ctx)) {
     // Add the constructor.
@@ -1815,8 +1799,7 @@ static bool synthesizedRequirementIsNonIsolated(
     return false;
 
   // Explicit nonisolated forces this.
-  if (conformance->getOptions()
-          .contains(ProtocolConformanceFlags::Nonisolated))
+  if (conformance->getOptions().contains(ProtocolConformanceFlags::Nonisolated))
     return true;
 
   // When we are inferring conformance isolation, only add nonisolated if
