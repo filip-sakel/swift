@@ -5019,7 +5019,9 @@ abi_role_detail::Storage abi_role_detail::computeStorage(Decl *decl) {
 }
 
 ABIRole::ABIRole(NLOptions opts)
-    : value(opts & NLOptions::ABIProviding ? ProvidesABI : ProvidesAPI) {}
+    : value((opts & NLOptions::ABIProviding) != NLOptions::None ? ProvidesABI
+                                                                : ProvidesAPI) {
+}
 
 VarDecl *
 PatternBindingDecl::getVarAtSimilarStructuralPosition(VarDecl *otherVar) {

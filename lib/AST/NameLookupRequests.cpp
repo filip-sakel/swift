@@ -612,10 +612,10 @@ contextualizeOptions(DirectLookupDescriptor descriptor, SourceLoc loc) {
 /// Exclude macros in the name lookup options if we need to.
 static NLOptions contextualizeOptions(const DeclContext *dc, SourceLoc loc,
                                       NLOptions options) {
-  if (!(options & NLOptions::ExcludeMacroExpansions) &&
+  if ((options & NLOptions::ExcludeMacroExpansions) == NLOptions::None &&
       namelookup::isInMacroArgument(dc->getParentSourceFile(), loc))
     options |= NLOptions::ExcludeMacroExpansions;
-  if (!(options & NLOptions::ABIProviding) &&
+  if ((options & NLOptions::ABIProviding) == NLOptions::None &&
       namelookup::isInABIAttr(dc->getParentSourceFile(), loc))
     options |= NLOptions::ABIProviding;
 

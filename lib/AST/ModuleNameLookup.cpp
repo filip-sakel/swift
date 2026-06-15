@@ -14,6 +14,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/ClangModuleLoader.h"
 #include "swift/AST/ImportCache.h"
+#include "swift/AST/LookupKinds.h"
 #include "swift/AST/NameLookup.h"
 #include "swift/AST/NameLookupRequests.h"
 #include "swift/Basic/Assertions.h"
@@ -153,12 +154,14 @@ bool swift::declIsVisibleToNameLookup(const ValueDecl *decl,
                                       NLOptions options) {
   // NLOptions::IgnoreAccessControl only applies to the current module. If
   // it applies here, the declaration is visible.
-  if ((options & NLOptions::IgnoreAccessControl) && moduleScopeContext &&
+  if ((options & NLOptions::IgnoreAccessControl) != NLOptions::None &&
+      moduleScopeContext &&
       moduleScopeContext->getParentModule() ==
           decl->getDeclContext()->getParentModule())
     return true;
 
-  bool includeUsableFromInline = options & NLOptions::IncludeUsableFromInline;
+  bool includeUsableFromInline =
+      (options & NLOptions::IncludeUsableFromInline) != NLOptions::None;
   return decl->isAccessibleFrom(moduleScopeContext, false,
                                 includeUsableFromInline);
 }
@@ -218,9 +221,9 @@ void ModuleNameLookup<LookupStrategy>::lookupInModule(
   };
 
   OptionSet<ModuleLookupFlags> currentModuleLookupFlags = {};
-  if (options & NLOptions::ExcludeMacroExpansions)
+  if ((options & NLOptions::ExcludeMacroExpansions) != NLOptions::None)
     currentModuleLookupFlags |= ModuleLookupFlags::ExcludeMacroExpansions;
-  if (options & NLOptions::ABIProviding)
+  if ((options & NLOptions::ABIProviding) != NLOptions::None)
     currentModuleLookupFlags |= ModuleLookupFlags::ABIProviding;
   if (hasModuleSelector)
     currentModuleLookupFlags |= ModuleLookupFlags::HasModuleSelector;
@@ -248,7 +251,7 @@ void ModuleNameLookup<LookupStrategy>::lookupInModule(
     auto &imports = ctx.getImportCache().getImportSet(moduleOrFile);
 
     OptionSet<ModuleLookupFlags> importedModuleLookupFlags = {};
-    if (options & NLOptions::ABIProviding)
+    if ((options & NLOptions::ABIProviding) != NLOptions::None)
       currentModuleLookupFlags |= ModuleLookupFlags::ABIProviding;
     // Do not propagate HasModuleSelector here; the selector wasn't specific.
 

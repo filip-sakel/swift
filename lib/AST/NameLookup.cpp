@@ -28,6 +28,7 @@
 #include "swift/AST/ImportCache.h"
 #include "swift/AST/Initializer.h"
 #include "swift/AST/LazyResolver.h"
+#include "swift/AST/LookupKinds.h"
 #include "swift/AST/MacroDeclaration.h"
 #include "swift/AST/ModuleNameLookup.h"
 #include "swift/AST/NameLookupRequests.h"
@@ -2443,9 +2444,10 @@ static bool isAcceptableLookupResult(const DeclContext *dc, NLOptions options,
   }
 
   // Check access.
-  if (!(options & NLOptions::IgnoreAccessControl) &&
+  if ((options & NLOptions::IgnoreAccessControl) == NLOptions::None &&
       !ctx.isAccessControlDisabled()) {
-    bool allowUsableFromInline = options & NLOptions::IncludeUsableFromInline;
+    bool allowUsableFromInline =
+        (options & NLOptions::IncludeUsableFromInline) != NLOptions::None;
     if (!decl->isAccessibleFrom(dc, /*forConformance*/ false,
                                 allowUsableFromInline))
       return false;
@@ -2455,7 +2457,8 @@ static bool isAcceptableLookupResult(const DeclContext *dc, NLOptions options,
   if (requireImport) {
     // If the options indicate that visibility should be enforced in this
     // lookup, check if the decl is imported.
-    bool checkDeclImport = !(options & NLOptions::IgnoreMissingImports);
+    bool checkDeclImport =
+        (options & NLOptions::IgnoreMissingImports) == NLOptions::None;
 
     // Even when missing imports are being ignored, we still need to filter out
     // overrides that haven't been imported. Otherwise, removeOverriddenDecls()
@@ -2491,7 +2494,7 @@ void namelookup::pruneLookupResultSet(const DeclContext *dc, NLOptions options,
                                       Identifier moduleSelector,
                                       SmallVectorImpl<ValueDecl *> &decls) {
   // If we're supposed to remove associated type declarations, do so now.
-  if (options & NLOptions::RemoveAssociatedTypes) {
+  if ((options & NLOptions::RemoveAssociatedTypes) != NLOptions::None) {
     decls.erase(std::remove_if(decls.begin(), decls.end(),
                                [&](ValueDecl *decl) {
                                  return isa<AssociatedTypeDecl>(decl);
@@ -2500,11 +2503,11 @@ void namelookup::pruneLookupResultSet(const DeclContext *dc, NLOptions options,
   }
 
   // If we're supposed to remove overridden declarations, do so now.
-  if (options & NLOptions::RemoveOverridden)
+  if ((options & NLOptions::RemoveOverridden) != NLOptions::None)
     removeOverriddenDecls(decls);
 
   // If we're supposed to remove shadowed/hidden declarations, do so now.
-  if (options & NLOptions::RemoveNonVisible) {
+  if ((options & NLOptions::RemoveNonVisible) != NLOptions::None) {
     removeOutOfModuleDecls(decls, moduleSelector, dc);
     removeShadowedDecls(decls, dc);
   }
@@ -2713,7 +2716,8 @@ QualifiedLookupRequest::evaluate(Evaluator &eval, const DeclContext *DC,
 
   // Visit all of the nominal types we know about, discovering any others
   // we need along the way.
-  bool wantProtocolMembers = (options & NLOptions::ProtocolMembers);
+  bool wantProtocolMembers =
+      (options & NLOptions::ProtocolMembers) != NLOptions::None;
   while (!stack.empty()) {
     auto current = stack.back();
     stack.pop_back();
@@ -2724,11 +2728,11 @@ QualifiedLookupRequest::evaluate(Evaluator &eval, const DeclContext *DC,
     // Look for results within the current nominal type and its extensions.
     bool currentIsProtocol = isa<ProtocolDecl>(current);
     auto flags = OptionSet<NominalTypeDecl::LookupDirectFlags>();
-    if (options & NLOptions::IncludeAttributeImplements)
+    if ((options & NLOptions::IncludeAttributeImplements) != NLOptions::None)
       flags |= NominalTypeDecl::LookupDirectFlags::IncludeAttrImplements;
-    if (options & NLOptions::ExcludeMacroExpansions)
+    if ((options & NLOptions::ExcludeMacroExpansions) != NLOptions::None)
       flags |= NominalTypeDecl::LookupDirectFlags::ExcludeMacroExpansions;
-    if (options & NLOptions::ABIProviding)
+    if ((options & NLOptions::ABIProviding) != NLOptions::None)
       flags |= NominalTypeDecl::LookupDirectFlags::ABIProviding;
 
     // Note that the source loc argument doesn't matter, because excluding
@@ -2737,12 +2741,14 @@ QualifiedLookupRequest::evaluate(Evaluator &eval, const DeclContext *DC,
          current->lookupDirect(member.getFullName(), SourceLoc(), flags)) {
       // If we're performing a type lookup, don't even attempt to validate
       // the decl if its not a type.
-      if ((options & NLOptions::OnlyTypes) && !isa<TypeDecl>(decl))
+      if ((options & NLOptions::OnlyTypes) != NLOptions::None &&
+          !isa<TypeDecl>(decl))
         continue;
 
       // If we're performing a macro lookup, don't even attempt to validate
       // the decl if its not a macro.
-      if ((options & NLOptions::OnlyMacros) && !isa<MacroDecl>(decl))
+      if ((options & NLOptions::OnlyMacros) != NLOptions::None &&
+          !isa<MacroDecl>(decl))
         continue;
 
       if (isAcceptableLookupResult(DC, options, decl, onlyCompleteObjectInits,
@@ -2774,7 +2780,8 @@ QualifiedLookupRequest::evaluate(Evaluator &eval, const DeclContext *DC,
     auto gpList = current->getGenericParams();
 
     // .. But not in type contexts (yet)
-    if (!(options & NLOptions::OnlyTypes) && gpList && !member.isSpecial()) {
+    if ((options & NLOptions::OnlyTypes) == NLOptions::None && gpList &&
+        !member.isSpecial()) {
       auto gp = gpList->lookUpGenericParam(member.getBaseIdentifier());
 
       if (gp && gp->isValue()) {
@@ -2841,10 +2848,11 @@ ModuleQualifiedLookupRequest::evaluate(Evaluator &eval, const DeclContext *DC,
   using namespace namelookup;
   QualifiedLookupResult decls;
 
-  auto kind =
-      (options & NLOptions::OnlyTypes    ? ResolutionKind::TypesOnly
-       : options & NLOptions::OnlyMacros ? ResolutionKind::MacrosOnly
-                                         : ResolutionKind::Overloadable);
+  auto kind = ((options & NLOptions::OnlyTypes) != NLOptions::None
+                   ? ResolutionKind::TypesOnly
+               : (options & NLOptions::OnlyMacros) != NLOptions::None
+                   ? ResolutionKind::MacrosOnly
+                   : ResolutionKind::Overloadable);
   auto topLevelScope = DC->getModuleScopeContext();
   if (module == topLevelScope->getParentModule()) {
     lookupInModule(module, member.getFullName(), member.hasModuleSelector(),
@@ -2887,8 +2895,8 @@ AnyObjectLookupRequest::evaluate(Evaluator &evaluator, const DeclContext *dc,
 
   // Type-only and macro lookup won't find anything on AnyObject.
   // AnyObject doesn't provide ABI.
-  if (options &
-      (NLOptions::OnlyTypes | NLOptions::OnlyMacros | NLOptions::ABIProviding))
+  if ((options & (NLOptions::OnlyTypes | NLOptions::OnlyMacros |
+                  NLOptions::ABIProviding)) != NLOptions::None)
     return decls;
 
   // Collect all of the visible declarations.
@@ -4452,8 +4460,9 @@ void swift::simple_display(llvm::raw_ostream &out, NLOptions options) {
 #undef FLAG
   };
 
-  auto flagsToPrint = llvm::make_filter_range(
-      possibleFlags, [&](Flag flag) { return options & flag.first; });
+  auto flagsToPrint = llvm::make_filter_range(possibleFlags, [&](Flag flag) {
+    return (options & flag.first) != NLOptions::None;
+  });
 
   out << "{ ";
   interleave(
