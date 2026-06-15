@@ -39,6 +39,9 @@ void simple_display(llvm::raw_ostream &out, NLKind kind);
 
 /// Constants used to customize name lookup.
 enum class NLOptions : unsigned {
+  /// No flags
+  None = 0,
+
   /// Consider declarations within protocols to which the context type conforms.
   ProtocolMembers = 1 << 0,
 

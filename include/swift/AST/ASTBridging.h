@@ -61,6 +61,7 @@ class DiagnosticEngine;
 enum class DifferentiabilityKind : uint8_t;
 class Fingerprint;
 class Identifier;
+class IfConfigClauseRangeInfo;
 enum class NLOptions : unsigned;
 class GenericSignature;
 class GenericSignatureImpl;
